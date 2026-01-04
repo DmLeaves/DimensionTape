@@ -13,7 +13,7 @@ ApplicationManager::ApplicationManager(QObject *parent)
 void ApplicationManager::initialize()
 {
     // 创建核心组件
-    m_stickerManager = new StickerManager(this);
+    m_stickerManager = StickerManager::instance();
     m_trayIcon = new TrayIcon(this);
     m_mainWindow = new MainWindow();
 

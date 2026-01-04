@@ -8,7 +8,10 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     stickerdata.cpp \
+    stickerrepository.cpp \
+    stickerruntime.cpp \
     stickermanager.cpp \
+    stickertransformlayout.cpp \
     stickerwidget.cpp \
     trayicon.cpp
 
@@ -17,7 +20,10 @@ HEADERS += \
     eventhandler.h \
     mainwindow.h \
     stickerdata.h \
+    stickerrepository.h \
+    stickerruntime.h \
     stickermanager.h \
+    stickertransformlayout.h \
     stickerwidget.h \
     trayicon.h
 

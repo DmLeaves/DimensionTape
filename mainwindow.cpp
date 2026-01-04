@@ -11,6 +11,10 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_centralWidget(nullptr)
     , m_currentStickerId("")
+    , m_hasSticker(false)
+    , m_isEditing(false)
+    , m_updatingEditor(false)
+    , m_updatingList(false)
 {
     setWindowTitle("桌面贴纸管理器");
     setMinimumSize(800, 600);
@@ -32,6 +36,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_eventTable, &QTableWidget::itemChanged, this, &MainWindow::onEventTableItemChanged);
 
     connect(m_applyChangesBtn, &QPushButton::clicked, this, &MainWindow::onApplyChangesClicked);
+    connect(m_cancelChangesBtn, &QPushButton::clicked, this, &MainWindow::onCancelChangesClicked);
     connect(m_loadConfigBtn, &QPushButton::clicked, this, &MainWindow::onLoadConfigClicked);
     connect(m_saveConfigBtn, &QPushButton::clicked, this, &MainWindow::onSaveConfigClicked);
 
@@ -69,15 +74,19 @@ void MainWindow::setupUI()
     m_loadConfigBtn = new QPushButton("加载配置");
     m_saveConfigBtn = new QPushButton("保存配置");
     m_applyChangesBtn = new QPushButton("应用更改");
+    m_cancelChangesBtn = new QPushButton("取消修改");
 
     buttonLayout->addWidget(m_loadConfigBtn);
     buttonLayout->addWidget(m_saveConfigBtn);
     buttonLayout->addStretch();
+    buttonLayout->addWidget(m_cancelChangesBtn);
     buttonLayout->addWidget(m_applyChangesBtn);
 
     mainLayout->addLayout(buttonLayout);
 
     m_centralWidget->setLayout(mainLayout);
+
+    connectEditorSignals();
 }
 
 void MainWindow::setupStickerList()
@@ -182,6 +191,47 @@ void MainWindow::setupBasicTab()
 
     layout->addWidget(positionGroup);
 
+    // 变换组
+    QGroupBox *transformGroup = new QGroupBox("变换");
+    QGridLayout *transformLayout = new QGridLayout(transformGroup);
+
+    transformLayout->addWidget(new QLabel("缩放X:"), 0, 0);
+    m_scaleXSpinBox = new QDoubleSpinBox;
+    m_scaleXSpinBox->setRange(0.1, 5.0);
+    m_scaleXSpinBox->setSingleStep(0.1);
+    m_scaleXSpinBox->setValue(1.0);
+    transformLayout->addWidget(m_scaleXSpinBox, 0, 1);
+
+    transformLayout->addWidget(new QLabel("缩放Y:"), 0, 2);
+    m_scaleYSpinBox = new QDoubleSpinBox;
+    m_scaleYSpinBox->setRange(0.1, 5.0);
+    m_scaleYSpinBox->setSingleStep(0.1);
+    m_scaleYSpinBox->setValue(1.0);
+    transformLayout->addWidget(m_scaleYSpinBox, 0, 3);
+
+    transformLayout->addWidget(new QLabel("旋转(度):"), 1, 0);
+    m_rotationSpinBox = new QDoubleSpinBox;
+    m_rotationSpinBox->setRange(-360.0, 360.0);
+    m_rotationSpinBox->setSingleStep(1.0);
+    m_rotationSpinBox->setValue(0.0);
+    transformLayout->addWidget(m_rotationSpinBox, 1, 1);
+
+    transformLayout->addWidget(new QLabel("斜切X:"), 1, 2);
+    m_shearXSpinBox = new QDoubleSpinBox;
+    m_shearXSpinBox->setRange(-2.0, 2.0);
+    m_shearXSpinBox->setSingleStep(0.1);
+    m_shearXSpinBox->setValue(0.0);
+    transformLayout->addWidget(m_shearXSpinBox, 1, 3);
+
+    transformLayout->addWidget(new QLabel("斜切Y:"), 2, 0);
+    m_shearYSpinBox = new QDoubleSpinBox;
+    m_shearYSpinBox->setRange(-2.0, 2.0);
+    m_shearYSpinBox->setSingleStep(0.1);
+    m_shearYSpinBox->setValue(0.0);
+    transformLayout->addWidget(m_shearYSpinBox, 2, 1);
+
+    layout->addWidget(transformGroup);
+
     // 显示属性组
     QGroupBox *displayGroup = new QGroupBox("显示属性");
     QGridLayout *displayLayout = new QGridLayout(displayGroup);
@@ -213,6 +263,29 @@ void MainWindow::setupBasicTab()
     layout->addWidget(displayGroup);
 
     layout->addStretch();
+}
+
+void MainWindow::connectEditorSignals()
+{
+    auto intChanged = QOverload<int>::of(&QSpinBox::valueChanged);
+    auto doubleChanged = QOverload<double>::of(&QDoubleSpinBox::valueChanged);
+
+    connect(m_nameEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
+    connect(m_imagePathEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
+    connect(m_xSpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_ySpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_widthSpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_heightSpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_scaleXSpinBox, doubleChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_scaleYSpinBox, doubleChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_rotationSpinBox, doubleChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_shearXSpinBox, doubleChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_shearYSpinBox, doubleChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_opacitySpinBox, doubleChanged, this, &MainWindow::onEditorValueChanged);
+    connect(m_visibleCheckBox, &QCheckBox::toggled, this, &MainWindow::onEditorValueChanged);
+    connect(m_desktopModeCheckBox, &QCheckBox::toggled, this, &MainWindow::onEditorValueChanged);
+    connect(m_allowDragCheckBox, &QCheckBox::toggled, this, &MainWindow::onEditorValueChanged);
+    connect(m_clickThroughCheckBox, &QCheckBox::toggled, this, &MainWindow::onEditorValueChanged);
 }
 
 void MainWindow::setupEventEditor()
@@ -323,7 +396,7 @@ void MainWindow::onCreateStickerClicked()
 {
     StickerConfig config;
     config.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    config.name = QString("贴纸 %1").arg(m_stickerConfigs.size() + 1);
+    config.name = QString("贴纸 1");
     config.position = QPoint(100, 100);
     config.size = QSize(200, 200);
     config.isDesktopMode = true;
@@ -364,25 +437,36 @@ void MainWindow::onEditStickerClicked()
 
 void MainWindow::onStickerListSelectionChanged()
 {
+    if (m_updatingList) {
+        return;
+    }
+
     QList<QListWidgetItem*> selected = m_stickerList->selectedItems();
+    QString previousId = m_currentStickerId;
 
     if (selected.isEmpty()) {
+        if (m_isEditing && !previousId.isEmpty()) {
+            cancelPendingEdits();
+        }
         m_currentStickerId = "";
         m_editStickerBtn->setEnabled(false);
         m_deleteStickerBtn->setEnabled(false);
         clearStickerEditor();
     } else {
         QString stickerId = selected.first()->data(Qt::UserRole).toString();
+
+        if (m_isEditing && !previousId.isEmpty() && previousId != stickerId) {
+            cancelPendingEdits();
+        }
+
         m_currentStickerId = stickerId;
         m_editStickerBtn->setEnabled(true);
         m_deleteStickerBtn->setEnabled(true);
 
-        // 更新编辑器
-        for (const auto &config : m_stickerConfigs) {
-            if (config.id == stickerId) {
-                updateStickerEditor(config);
-                break;
-            }
+        if (m_hasSticker && m_currentConfig.id == stickerId) {
+            updateStickerEditor(m_currentConfig);
+            m_editBaseline = m_currentConfig;
+            m_isEditing = false;
         }
     }
 }
@@ -420,14 +504,9 @@ void MainWindow::onAddEventClicked()
     event.parameters = m_parametersEdit->text();
     event.enabled = true;
 
-    // 添加到当前贴纸配置
-    for (auto &config : m_stickerConfigs) {
-        if (config.id == m_currentStickerId) {
-            config.events.append(event);
-            updateEventTable();
-            break;
-        }
-    }
+    m_currentConfig.events.append(event);
+    updateEventTable();
+    applyPreviewIfEditing();
 
     // 清空输入框
     m_targetEdit->clear();
@@ -440,15 +519,11 @@ void MainWindow::onRemoveEventClicked()
 {
     int currentRow = m_eventTable->currentRow();
     if (currentRow >= 0 && !m_currentStickerId.isEmpty()) {
-        for (auto &config : m_stickerConfigs) {
-            if (config.id == m_currentStickerId) {
-                if (currentRow < config.events.size()) {
-                    config.events.removeAt(currentRow);
-                    updateEventTable();
-                    statusBar()->showMessage("事件已删除", 2000);
-                }
-                break;
-            }
+        if (currentRow < m_currentConfig.events.size()) {
+            m_currentConfig.events.removeAt(currentRow);
+            updateEventTable();
+            statusBar()->showMessage("事件已删除", 2000);
+            applyPreviewIfEditing();
         }
     } else {
         QMessageBox::warning(this, "警告", "请选择要删除的事件");
@@ -465,35 +540,74 @@ void MainWindow::onEventTableItemChanged(QTableWidgetItem *item)
     int column = item->column();
 
     // 找到对应的配置
-    for (auto &config : m_stickerConfigs) {
-        if (config.id == m_currentStickerId) {
-            if (row < config.events.size()) {
-                StickerEvent &event = config.events[row];
+    if (row < m_currentConfig.events.size()) {
+        StickerEvent &event = m_currentConfig.events[row];
 
-                // 根据列更新事件数据
-                switch (column) {
-                case 0: // 触发器
-                    event.trigger = stringToMouseTrigger(item->text());
-                    break;
-                case 1: // 事件类型
-                    event.type = stringToEventType(item->text());
-                    break;
-                case 2: // 目标
-                    event.target = item->text();
-                    break;
-                case 3: // 参数
-                    event.parameters = item->text();
-                    break;
-                case 4: // 启用状态
-                    event.enabled = (item->checkState() == Qt::Checked);
-                    break;
-                }
-
-                statusBar()->showMessage("事件已更新", 2000);
-            }
+        switch (column) {
+        case 0:
+            event.trigger = stringToMouseTrigger(item->text());
+            break;
+        case 1:
+            event.type = stringToEventType(item->text());
+            break;
+        case 2:
+            event.target = item->text();
+            break;
+        case 3:
+            event.parameters = item->text();
+            break;
+        case 4:
+            event.enabled = (item->checkState() == Qt::Checked);
             break;
         }
+
+        statusBar()->showMessage("事件已更新", 2000);
+        applyPreviewIfEditing();
     }
+}
+
+void MainWindow::beginEditSession()
+{
+    if (!m_hasSticker || m_currentStickerId.isEmpty()) {
+        return;
+    }
+    if (!m_isEditing) {
+        m_editBaseline = m_currentConfig;
+        m_isEditing = true;
+    }
+}
+
+void MainWindow::applyPreviewIfEditing()
+{
+    if (m_updatingEditor) {
+        return;
+    }
+    if (!m_hasSticker || m_currentStickerId.isEmpty()) {
+        return;
+    }
+    beginEditSession();
+    StickerConfig config = getStickerConfigFromEditor();
+    m_currentConfig = config;
+    emit editStickerWithConfig(m_currentStickerId, config);
+}
+
+void MainWindow::cancelPendingEdits()
+{
+    if (!m_isEditing || m_currentStickerId.isEmpty()) {
+        return;
+    }
+    emit editStickerWithConfig(m_currentStickerId, m_editBaseline);
+    m_currentConfig = m_editBaseline;
+    m_isEditing = false;
+    updateStickerEditor(m_editBaseline);
+}
+
+void MainWindow::onEditorValueChanged()
+{
+    if (m_updatingEditor) {
+        return;
+    }
+    applyPreviewIfEditing();
 }
 
 void MainWindow::onApplyChangesClicked()
@@ -505,17 +619,22 @@ void MainWindow::onApplyChangesClicked()
 
     StickerConfig config = getStickerConfigFromEditor();
 
-    // 更新本地配置
-    for (auto &storedConfig : m_stickerConfigs) {
-        if (storedConfig.id == m_currentStickerId) {
-            storedConfig = config;
-            break;
-        }
-    }
+    m_currentConfig = config;
+    m_editBaseline = config;
+    m_isEditing = false;
 
     // 发出编辑信号，传递完整的配置
     emit editStickerWithConfig(m_currentStickerId, config);
     statusBar()->showMessage("配置已应用", 3000);
+}
+
+void MainWindow::onCancelChangesClicked()
+{
+    if (m_currentStickerId.isEmpty()) {
+        return;
+    }
+    cancelPendingEdits();
+    statusBar()->showMessage("修改已取消", 2000);
 }
 
 void MainWindow::onLoadConfigClicked()
@@ -530,26 +649,27 @@ void MainWindow::onSaveConfigClicked()
 
 void MainWindow::onStickerCreated(const StickerConfig &config)
 {
-    // 将新配置添加到本地列表
-    m_stickerConfigs.append(config);
+    m_currentConfig = config;
+    m_hasSticker = true;
+    if (m_currentStickerId.isEmpty()) {
+        m_currentStickerId = config.id;
+    }
+    m_editBaseline = config;
+    m_isEditing = false;
     updateStickerList();
     statusBar()->showMessage(QString("贴纸 '%1' 已创建").arg(config.name), 3000);
 }
 
 void MainWindow::onStickerDeleted(const QString &stickerId)
 {
-    // 从本地配置中移除
-    for (int i = m_stickerConfigs.size() - 1; i >= 0; --i) {
-        if (m_stickerConfigs[i].id == stickerId) {
-            m_stickerConfigs.removeAt(i);
-            break;
-        }
-    }
-
     if (m_currentStickerId == stickerId) {
         m_currentStickerId = "";
         clearStickerEditor();
     }
+    m_hasSticker = false;
+    m_currentConfig = StickerConfig();
+    m_editBaseline = StickerConfig();
+    m_isEditing = false;
 
     updateStickerList();
     statusBar()->showMessage("贴纸已删除", 3000);
@@ -557,12 +677,10 @@ void MainWindow::onStickerDeleted(const QString &stickerId)
 
 void MainWindow::onStickerConfigChanged(const StickerConfig &config)
 {
-    // 更新本地配置
-    for (auto &storedConfig : m_stickerConfigs) {
-        if (storedConfig.id == config.id) {
-            storedConfig = config;
-            break;
-        }
+    m_currentConfig = config;
+    m_hasSticker = true;
+    if (m_currentStickerId.isEmpty()) {
+        m_currentStickerId = config.id;
     }
 
     updateStickerList();
@@ -570,17 +688,26 @@ void MainWindow::onStickerConfigChanged(const StickerConfig &config)
     // 如果是当前选中的贴纸，更新编辑器
     if (m_currentStickerId == config.id) {
         updateStickerEditor(config);
+        if (!m_isEditing) {
+            m_editBaseline = config;
+        }
     }
 }
 
 void MainWindow::updateStickerEditor(const StickerConfig &config)
 {
+    m_updatingEditor = true;
     m_nameEdit->setText(config.name);
     m_imagePathEdit->setText(config.imagePath);
     m_xSpinBox->setValue(config.position.x());
     m_ySpinBox->setValue(config.position.y());
     m_widthSpinBox->setValue(config.size.width());
     m_heightSpinBox->setValue(config.size.height());
+    m_scaleXSpinBox->setValue(config.transform.scaleX);
+    m_scaleYSpinBox->setValue(config.transform.scaleY);
+    m_rotationSpinBox->setValue(config.transform.rotation);
+    m_shearXSpinBox->setValue(config.transform.shearX);
+    m_shearYSpinBox->setValue(config.transform.shearY);
     m_opacitySpinBox->setValue(config.opacity);
     m_visibleCheckBox->setChecked(config.visible);
     m_desktopModeCheckBox->setChecked(config.isDesktopMode);
@@ -588,16 +715,23 @@ void MainWindow::updateStickerEditor(const StickerConfig &config)
     m_clickThroughCheckBox->setChecked(config.clickThrough);  // 新增
 
     updateEventTable();
+    m_updatingEditor = false;
 }
 
 void MainWindow::clearStickerEditor()
 {
+    m_updatingEditor = true;
     m_nameEdit->clear();
     m_imagePathEdit->clear();
     m_xSpinBox->setValue(0);
     m_ySpinBox->setValue(0);
     m_widthSpinBox->setValue(200);
     m_heightSpinBox->setValue(200);
+    m_scaleXSpinBox->setValue(1.0);
+    m_scaleYSpinBox->setValue(1.0);
+    m_rotationSpinBox->setValue(0.0);
+    m_shearXSpinBox->setValue(0.0);
+    m_shearYSpinBox->setValue(0.0);
     m_opacitySpinBox->setValue(1.0);
     m_visibleCheckBox->setChecked(true);
     m_desktopModeCheckBox->setChecked(true);
@@ -605,25 +739,25 @@ void MainWindow::clearStickerEditor()
     m_clickThroughCheckBox->setChecked(false);  // 新增
 
     m_eventTable->setRowCount(0);
+    m_updatingEditor = false;
 }
 
 StickerConfig MainWindow::getStickerConfigFromEditor() const
 {
     StickerConfig config;
 
-    // 获取现有配置作为基础
-    for (const auto &storedConfig : m_stickerConfigs) {
-        if (storedConfig.id == m_currentStickerId) {
-            config = storedConfig; // 保留ID和事件
-            break;
-        }
-    }
+    config = m_currentConfig;
 
     // 更新编辑器中的值
     config.name = m_nameEdit->text();
     config.imagePath = m_imagePathEdit->text();
     config.position = QPoint(m_xSpinBox->value(), m_ySpinBox->value());
     config.size = QSize(m_widthSpinBox->value(), m_heightSpinBox->value());
+    config.transform.scaleX = m_scaleXSpinBox->value();
+    config.transform.scaleY = m_scaleYSpinBox->value();
+    config.transform.rotation = m_rotationSpinBox->value();
+    config.transform.shearX = m_shearXSpinBox->value();
+    config.transform.shearY = m_shearYSpinBox->value();
     config.opacity = m_opacitySpinBox->value();
     config.visible = m_visibleCheckBox->isChecked();
     config.isDesktopMode = m_desktopModeCheckBox->isChecked();
@@ -640,22 +774,14 @@ void MainWindow::updateEventTable()
         return;
     }
 
-    const StickerConfig *config = nullptr;
-    for (const auto &storedConfig : m_stickerConfigs) {
-        if (storedConfig.id == m_currentStickerId) {
-            config = &storedConfig;
-            break;
-        }
-    }
-
-    if (!config) {
+    if (!m_hasSticker || m_currentConfig.id != m_currentStickerId) {
         return;
     }
 
-    m_eventTable->setRowCount(config->events.size());
+    m_eventTable->setRowCount(m_currentConfig.events.size());
 
-    for (int i = 0; i < config->events.size(); ++i) {
-        const auto &event = config->events[i];
+    for (int i = 0; i < m_currentConfig.events.size(); ++i) {
+        const auto &event = m_currentConfig.events[i];
 
         m_eventTable->setItem(i, 0, new QTableWidgetItem(mouseTriggersToString(event.trigger)));
         m_eventTable->setItem(i, 1, new QTableWidgetItem(eventTypeToString(event.type)));
@@ -671,32 +797,72 @@ void MainWindow::updateEventTable()
 void MainWindow::updateStickerList()
 {
     QString currentId = m_currentStickerId; // 保存当前选择
-    m_stickerList->clear();
+    m_updatingList = true;
 
-    for (const StickerConfig &config : m_stickerConfigs) {
-        QListWidgetItem *item = new QListWidgetItem(config.name);
-        item->setData(Qt::UserRole, config.id);
+    if (!m_hasSticker) {
+        m_stickerList->clear();
+        m_updatingList = false;
+        statusBar()->showMessage(QString("共 %1 个贴纸").arg(0), 3000);
+        return;
+    }
 
-        if (!config.visible) {
-            item->setTextColor(QColor(128, 128, 128));
-        }
-
-        m_stickerList->addItem(item);
-
-        // 恢复选择
-        if (config.id == currentId) {
-            item->setSelected(true);
+    if (m_stickerList->count() == 1) {
+        QListWidgetItem *item = m_stickerList->item(0);
+        if (item && item->data(Qt::UserRole).toString() == m_currentConfig.id) {
+            item->setText(m_currentConfig.name);
+            item->setData(Qt::UserRole, m_currentConfig.id);
+            if (!m_currentConfig.visible) {
+                item->setTextColor(QColor(128, 128, 128));
+            } else {
+                item->setTextColor(QColor(0, 0, 0));
+            }
+            if (m_currentConfig.id == currentId) {
+                item->setSelected(true);
+            }
+            m_updatingList = false;
+            statusBar()->showMessage(QString("共 %1 个贴纸").arg(1), 3000);
+            return;
         }
     }
 
-    // 更新状态栏
-    statusBar()->showMessage(QString("共 %1 个贴纸").arg(m_stickerConfigs.size()), 3000);
+    m_stickerList->clear();
+    QListWidgetItem *item = new QListWidgetItem(m_currentConfig.name);
+    item->setData(Qt::UserRole, m_currentConfig.id);
+
+    if (!m_currentConfig.visible) {
+        item->setTextColor(QColor(128, 128, 128));
+    }
+
+    m_stickerList->addItem(item);
+
+    if (m_currentConfig.id == currentId) {
+        item->setSelected(true);
+    }
+
+    m_updatingList = false;
+    statusBar()->showMessage(QString("共 %1 个贴纸").arg(1), 3000);
 }
 
 void MainWindow::onStickerConfigsUpdated(const QList<StickerConfig> &configs)
 {
     qDebug() << "更新贴纸列表，共" << configs.size() << "个贴纸";
 
-    m_stickerConfigs = configs;
+    if (configs.isEmpty()) {
+        m_hasSticker = false;
+        m_currentStickerId = "";
+        m_currentConfig = StickerConfig();
+        m_editBaseline = StickerConfig();
+        m_isEditing = false;
+        clearStickerEditor();
+    } else {
+        m_currentConfig = configs.first();
+        m_hasSticker = true;
+        if (m_currentStickerId.isEmpty()) {
+            m_currentStickerId = m_currentConfig.id;
+        }
+        if (!m_isEditing) {
+            m_editBaseline = m_currentConfig;
+        }
+    }
     updateStickerList();
 }

@@ -1,5 +1,71 @@
 #include "StickerData.h"
 #include <QJsonArray>
+#include <QtMath>
+
+StickerTransform::StickerTransform()
+    : scaleX(1.0)
+    , scaleY(1.0)
+    , rotation(0.0)
+    , shearX(0.0)
+    , shearY(0.0)
+{
+}
+
+QTransform StickerTransform::toTransform() const
+{
+    QTransform transform;
+    transform.scale(scaleX, scaleY);
+    transform.shear(shearX, shearY);
+    transform.rotate(rotation);
+    return transform;
+}
+
+StickerTransform StickerTransform::fromTransform(const QTransform &transform)
+{
+    StickerTransform params;
+
+    const double a = transform.m11();
+    const double b = transform.m12();
+    const double c = transform.m21();
+    const double d = transform.m22();
+
+    double rotationRad = qAtan2(b, a);
+    const double cosr = qCos(rotationRad);
+    const double sinr = qSin(rotationRad);
+
+    const double aPrime = a * cosr + b * sinr;
+    const double bPrime = -a * sinr + b * cosr;
+    const double cPrime = c * cosr + d * sinr;
+    const double dPrime = -c * sinr + d * cosr;
+
+    params.scaleX = qFuzzyIsNull(aPrime) ? 1.0 : aPrime;
+    params.scaleY = qFuzzyIsNull(dPrime) ? 1.0 : dPrime;
+    params.shearX = qFuzzyIsNull(params.scaleX) ? 0.0 : (bPrime / params.scaleX);
+    params.shearY = qFuzzyIsNull(params.scaleY) ? 0.0 : (cPrime / params.scaleY);
+    params.rotation = qRadiansToDegrees(rotationRad);
+
+    return params;
+}
+
+QJsonObject StickerTransform::toJson() const
+{
+    QJsonObject obj;
+    obj["scaleX"] = scaleX;
+    obj["scaleY"] = scaleY;
+    obj["rotation"] = rotation;
+    obj["shearX"] = shearX;
+    obj["shearY"] = shearY;
+    return obj;
+}
+
+void StickerTransform::fromJson(const QJsonObject &json)
+{
+    scaleX = json["scaleX"].toDouble(1.0);
+    scaleY = json["scaleY"].toDouble(1.0);
+    rotation = json["rotation"].toDouble(0.0);
+    shearX = json["shearX"].toDouble(0.0);
+    shearY = json["shearY"].toDouble(0.0);
+}
 
 QJsonObject StickerEvent::toJson() const
 {
@@ -34,6 +100,7 @@ QJsonObject StickerConfig::toJson() const
     obj["opacity"] = opacity;
     obj["allowDrag"] = allowDrag;       // 新增
     obj["clickThrough"] = clickThrough; // 新增
+    obj["transform"] = transform.toJson();
 
     QJsonArray eventsArray;
     for (const StickerEvent &event : events) {
@@ -65,6 +132,21 @@ void StickerConfig::fromJson(const QJsonObject &json)
     opacity = json["opacity"].toDouble(1.0);
     allowDrag = json["allowDrag"].toBool(true);         // 新增，默认允许拖动
     clickThrough = json["clickThrough"].toBool(false);  // 新增，默认不穿透
+    if (json["transform"].isObject()) {
+        transform.fromJson(json["transform"].toObject());
+    } else if (json["transform"].isArray()) {
+        QJsonArray transformArray = json["transform"].toArray();
+        if (transformArray.size() >= 6) {
+            QTransform matrix(
+                transformArray[0].toDouble(), transformArray[1].toDouble(),
+                transformArray[2].toDouble(), transformArray[3].toDouble(),
+                transformArray[4].toDouble(), transformArray[5].toDouble()
+            );
+            transform = StickerTransform::fromTransform(matrix);
+        }
+    } else {
+        transform = StickerTransform();
+    }
 
     events.clear();
     QJsonArray eventsArray = json["events"].toArray();

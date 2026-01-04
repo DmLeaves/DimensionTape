@@ -55,6 +55,7 @@ private slots:
     void onToggleMode();
     void onToggleDrag();        // 新增
     void onToggleClickThrough(); // 新增
+    void onToggleEditMode();
 
 private:
     void initializeWidget();
@@ -63,21 +64,27 @@ private:
     void applyMask();
     QBitmap createMaskFromPixmap(const QPixmap &pixmap);
     QPixmap scalePixmapKeepRatio(const QPixmap &pixmap, int maxSize);
+    QRect computeContentRect(const QPixmap &pixmap) const;
+    QSize baseRenderSize() const;
+    void updateTransformedWindowSize();
     void setupContextMenu();
     void updateContextMenuState();  // 添加这个函数声明
     void handleMouseTrigger(MouseTrigger trigger);
     void updateWindowFlags();
     void updateClickThrough(); // 新增
+    void setEditMode(bool enabled);
 
     StickerConfig m_config;
     EventHandler *m_eventHandler;
 
     QPixmap m_stickerPixmap;
+    QRect m_contentRect;
     QPoint m_dragPosition;
     bool m_dragging;
     bool m_initialized;
     double m_animationAngle;
     int m_maxWindowSize;
+    bool m_editMode;
 
     QTimer *m_animationTimer;
     QPropertyAnimation *m_opacityAnimation;
@@ -88,6 +95,7 @@ private:
     QAction *m_toggleModeAction;
     QAction *m_toggleDragAction;        // 新增
     QAction *m_toggleClickThroughAction; // 新增
+    QAction *m_editModeAction;
     QAction *m_deleteAction;
 };
 

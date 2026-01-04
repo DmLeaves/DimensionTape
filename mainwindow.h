@@ -63,7 +63,9 @@ private slots:
     void onAddEventClicked();
     void onRemoveEventClicked();
     void onEventTableItemChanged(QTableWidgetItem *item); // 修复参数
+    void onEditorValueChanged();
     void onApplyChangesClicked();
+    void onCancelChangesClicked();
     void onLoadConfigClicked();
     void onSaveConfigClicked();
     void onExitClicked();
@@ -76,6 +78,10 @@ private:
     void setupEventEditor();
     void setupMenuBar();
     void setupStatusBar();
+    void connectEditorSignals();
+    void beginEditSession();
+    void applyPreviewIfEditing();
+    void cancelPendingEdits();
 
     void updateStickerEditor(const StickerConfig &config);
     void clearStickerEditor();
@@ -112,6 +118,11 @@ private:
     QDoubleSpinBox *m_opacitySpinBox;
     QCheckBox *m_visibleCheckBox;
     QCheckBox *m_desktopModeCheckBox;
+    QDoubleSpinBox *m_scaleXSpinBox;
+    QDoubleSpinBox *m_scaleYSpinBox;
+    QDoubleSpinBox *m_rotationSpinBox;
+    QDoubleSpinBox *m_shearXSpinBox;
+    QDoubleSpinBox *m_shearYSpinBox;
 
     // 事件编辑标签页
     QWidget *m_eventsTab;
@@ -125,12 +136,18 @@ private:
 
     // 控制按钮
     QPushButton *m_applyChangesBtn;
+    QPushButton *m_cancelChangesBtn;
     QPushButton *m_loadConfigBtn;
     QPushButton *m_saveConfigBtn;
 
     // 数据
-    QList<StickerConfig> m_stickerConfigs;
+    StickerConfig m_currentConfig;
+    StickerConfig m_editBaseline;
     QString m_currentStickerId;
+    bool m_hasSticker;
+    bool m_isEditing;
+    bool m_updatingEditor;
+    bool m_updatingList;
 };
 
 #endif // MAINWINDOW_H

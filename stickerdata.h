@@ -6,6 +6,7 @@
 #include <QSize>
 #include <QJsonObject>
 #include <QList>
+#include <QTransform>
 
 // 前向声明
 struct StickerEvent;
@@ -53,6 +54,22 @@ struct StickerEvent {
     void fromJson(const QJsonObject &json);
 };
 
+// 贴纸变换参数
+struct StickerTransform {
+    double scaleX;
+    double scaleY;
+    double rotation; // 度
+    double shearX;
+    double shearY;
+
+    StickerTransform();
+
+    QTransform toTransform() const;
+    static StickerTransform fromTransform(const QTransform &transform);
+    QJsonObject toJson() const;
+    void fromJson(const QJsonObject &json);
+};
+
 // 贴纸配置数据
 struct StickerConfig {
     QString id;              // 唯一标识
@@ -65,6 +82,7 @@ struct StickerConfig {
     double opacity;          // 透明度
     bool allowDrag;          // 允许拖动
     bool clickThrough;       // 点击穿透
+    StickerTransform transform; // 变换参数
     QList<StickerEvent> events; // 事件列表
 
     // 构造函数

@@ -11,6 +11,7 @@
 #include <QGraphicsOpacityEffect>
 #include <QDebug>
 #include <QtMath>
+#include "stickertransformlayout.h"
 
 StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     : QWidget(parent)
@@ -20,6 +21,7 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     , m_initialized(false)
     , m_animationAngle(0)
     , m_maxWindowSize(600)
+    , m_editMode(false)
 {
     // 基础设置
     setAttribute(Qt::WA_TranslucentBackground, true);
@@ -91,6 +93,8 @@ void StickerWidget::initializeWidget()
         createDefaultSticker();
     }
 
+    updateTransformedWindowSize();
+
     // 应用遮罩
     applyMask();
 
@@ -124,6 +128,7 @@ void StickerWidget::loadStickerImage(const QString &imagePath)
 
     // 缩放大图片
     m_stickerPixmap = scalePixmapKeepRatio(originalPixmap, m_maxWindowSize);
+    m_contentRect = computeContentRect(m_stickerPixmap);
 
     // 更新窗口大小
     if (m_stickerPixmap.size() != size()) {
@@ -168,6 +173,8 @@ void StickerWidget::createDefaultSticker()
 
     painter.end();
 
+    m_contentRect = computeContentRect(m_stickerPixmap);
+
     qDebug() << "默认贴纸创建完成";
 }
 
@@ -189,6 +196,45 @@ QPixmap StickerWidget::scalePixmapKeepRatio(const QPixmap &pixmap, int maxSize)
     int newHeight = int(originalHeight * scale);
 
     return pixmap.scaled(newWidth, newHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+}
+
+QRect StickerWidget::computeContentRect(const QPixmap &pixmap) const
+{
+    if (pixmap.isNull()) {
+        return QRect();
+    }
+
+    QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
+    int minX = image.width();
+    int minY = image.height();
+    int maxX = -1;
+    int maxY = -1;
+
+    for (int y = 0; y < image.height(); ++y) {
+        const QRgb *line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            if (qAlpha(line[x]) > 50) {
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+            }
+        }
+    }
+
+    if (maxX < minX || maxY < minY) {
+        return QRect(0, 0, image.width(), image.height());
+    }
+
+    return QRect(QPoint(minX, minY), QPoint(maxX, maxY));
+}
+
+QSize StickerWidget::baseRenderSize() const
+{
+    if (m_contentRect.isValid()) {
+        return m_contentRect.size();
+    }
+    return m_config.size.isEmpty() ? m_stickerPixmap.size() : m_config.size;
 }
 
 QBitmap StickerWidget::createMaskFromPixmap(const QPixmap &pixmap)
@@ -226,15 +272,78 @@ void StickerWidget::applyMask()
         return;
     }
 
-    QBitmap mask = createMaskFromPixmap(m_stickerPixmap);
+    StickerTransformLayoutResult layout;
+    if (!StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
+        return;
+    }
+
+    QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, size());
+
+    QPixmap maskSource(size());
+    maskSource.fill(Qt::transparent);
+
+    QPainter maskPainter(&maskSource);
+    maskPainter.setRenderHint(QPainter::Antialiasing);
+    maskPainter.setTransform(renderTransform, true);
+    QRectF sourceRect = m_contentRect.isValid() ? QRectF(m_contentRect) : QRectF(m_stickerPixmap.rect());
+    maskPainter.drawPixmap(layout.baseRect, m_stickerPixmap, sourceRect);
+    maskPainter.end();
+
+    QBitmap mask = createMaskFromPixmap(maskSource);
     if (!mask.isNull()) {
         setMask(mask);
     }
 }
 
+void StickerWidget::updateTransformedWindowSize()
+{
+    StickerTransformLayoutResult layout;
+    if (!StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
+        return;
+    }
+
+    if (m_editMode) {
+        QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, layout.windowSize);
+        QRectF mapped = renderTransform.mapRect(layout.baseRect);
+        QPointF windowCenter(layout.windowSize.width() / 2.0, layout.windowSize.height() / 2.0);
+        QPointF centerOffset = mapped.center() - windowCenter;
+        qDebug() << "变换调试"
+                 << "baseSize" << baseRenderSize()
+                 << "contentRect" << m_contentRect
+                 << "windowSize" << layout.windowSize
+                 << "bounds" << layout.bounds
+                 << "baseRect" << layout.baseRect
+                 << "mappedCenter" << mapped.center()
+                 << "centerOffset" << centerOffset
+                 << "pos" << pos()
+                 << "cfgPos" << m_config.position
+                 << "scale" << m_config.transform.scaleX << m_config.transform.scaleY
+                 << "rot" << m_config.transform.rotation
+                 << "shear" << m_config.transform.shearX << m_config.transform.shearY;
+    }
+
+    if (layout.windowSize != size()) {
+        QPoint oldCenter = geometry().center();
+        setFixedSize(layout.windowSize);
+        QPoint newTopLeft = oldCenter - QPoint(layout.windowSize.width() / 2,
+                                               layout.windowSize.height() / 2);
+        move(newTopLeft);
+        if (m_config.position != pos()) {
+            m_config.position = pos();
+            if (m_initialized) {
+                emit configChanged(m_config);
+            }
+        }
+    }
+}
+
 void StickerWidget::updateWindowFlags()
 {
-    if (m_config.isDesktopMode) {
+    if (m_editMode) {
+        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
+        setAttribute(Qt::WA_ShowWithoutActivating, false);
+        setFocusPolicy(Qt::StrongFocus);
+    } else if (m_config.isDesktopMode) {
         setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnBottomHint);
         setAttribute(Qt::WA_ShowWithoutActivating, true);
         setFocusPolicy(Qt::NoFocus);
@@ -248,6 +357,10 @@ void StickerWidget::updateWindowFlags()
 
     if (m_initialized) {
         show(); // 重新显示窗口以应用新的标志
+        if (m_editMode) {
+            raise();
+            activateWindow();
+        }
     }
 }
 
@@ -273,13 +386,29 @@ void StickerWidget::paintEvent(QPaintEvent *)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // 绘制贴纸图片
-    painter.drawPixmap(rect(), m_stickerPixmap);
+    // 绘制贴纸图片（支持矩阵变换）
+    StickerTransformLayoutResult layout;
+    if (StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
+        QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, size());
+        painter.save();
+        painter.setTransform(renderTransform, true);
+        QRectF sourceRect = m_contentRect.isValid() ? QRectF(m_contentRect) : QRectF(m_stickerPixmap.rect());
+        painter.drawPixmap(layout.baseRect, m_stickerPixmap, sourceRect);
+        painter.restore();
+    }
 
     // 默认贴纸的动画效果
     if (m_config.imagePath.isEmpty()) {
         int alpha = int(20 + 15 * qSin(m_animationAngle));
         painter.fillRect(rect(), QColor(150, 200, 255, alpha));
+    }
+
+    if (m_editMode) {
+        QPen borderPen(QColor(0, 180, 0), 2);
+        painter.setPen(borderPen);
+        painter.setBrush(Qt::NoBrush);
+        QRect borderRect = rect().adjusted(1, 1, -2, -2);
+        painter.drawRect(borderRect);
     }
 }
 
@@ -427,6 +556,7 @@ void StickerWidget::setupContextMenu()
     m_contextMenu = new QMenu(this);
 
     m_editAction = m_contextMenu->addAction("编辑贴纸", this, &StickerWidget::onEditSticker);
+    m_editModeAction = m_contextMenu->addAction("编辑模式", this, &StickerWidget::onToggleEditMode);
 
     m_contextMenu->addSeparator();
 
@@ -441,6 +571,7 @@ void StickerWidget::setupContextMenu()
     // 设置复选框状态
     m_toggleDragAction->setCheckable(true);
     m_toggleClickThroughAction->setCheckable(true);
+    m_editModeAction->setCheckable(true);
 
     // 更新菜单状态
     updateContextMenuState();
@@ -457,6 +588,7 @@ void StickerWidget::updateContextMenuState()
     // 更新复选框状态
     m_toggleDragAction->setChecked(m_config.allowDrag);
     m_toggleClickThroughAction->setChecked(m_config.clickThrough);
+    m_editModeAction->setChecked(m_editMode);
 }
 
 void StickerWidget::onAnimationTimer()
@@ -526,23 +658,41 @@ void StickerWidget::onToggleClickThrough()
     qDebug() << "贴纸" << m_config.id << status;
 }
 
+void StickerWidget::setEditMode(bool enabled)
+{
+    if (m_editMode == enabled) {
+        return;
+    }
+
+    m_editMode = enabled;
+    updateWindowFlags();
+    updateContextMenuState();
+    update();
+}
+
+void StickerWidget::onToggleEditMode()
+{
+    setEditMode(!m_editMode);
+}
+
 StickerConfig StickerWidget::getConfig() const
 {
     StickerConfig config = m_config;
     config.position = pos();
-    config.size = size();
+    config.size = m_config.size;
     config.visible = isVisible();
     return config;
 }
 
 void StickerWidget::updateConfig(const StickerConfig &config)
 {
+    QSize oldBaseSize = m_config.size;
     m_config = config;
 
     // 更新位置和大小
     move(config.position);
-    if (config.size != size()) {
-        setFixedSize(config.size);
+    if (config.size != oldBaseSize) {
+        setFixedSize(m_config.size);
     }
 
     // 更新图像
@@ -552,8 +702,10 @@ void StickerWidget::updateConfig(const StickerConfig &config)
         createDefaultSticker();
     }
 
-    // 重新应用遮罩和窗口设置
+    updateTransformedWindowSize();
     applyMask();
+
+    // 重新应用窗口设置
     updateWindowFlags();
     updateClickThrough();
     setOpacity(config.opacity);

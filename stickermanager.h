@@ -2,23 +2,22 @@
 #define STICKERMANAGER_H
 
 #include <QObject>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QFile>
-#include <QStandardPaths>
-#include <QDir>
+#include <QMutex>
 #include <QTimer>
 #include "StickerData.h"
-#include "StickerWidget.h"
+#include "stickerrepository.h"
+#include "stickerruntime.h"
 
 class StickerManager : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit StickerManager(QObject *parent = nullptr);
+    static StickerManager* instance();
     ~StickerManager();
+
+    StickerManager(const StickerManager&) = delete;
+    StickerManager& operator=(const StickerManager&) = delete;
 
     // 贴纸管理
     void createStickerInternal(const StickerConfig &config);
@@ -56,17 +55,21 @@ private slots:
     void onAutoSaveTimer();
 
 private:
-    void initializeDataDirectory();
-    QString getConfigFilePath() const;
-    void removeStickerWidget(const QString &stickerId);
-    void updateStickerWidget(const QString &stickerId, const StickerConfig &config);
+    explicit StickerManager(QObject *parent = nullptr);
 
-    QMap<QString, StickerWidget*> m_stickerWidgets;
+    bool loadConfigInternal();
+    bool saveConfigInternal();
+    void destroyStickerInternal();
     void createDefaultSticker();
-    QList<StickerConfig> m_stickerConfigs;
+    void updateRuntimeConnections();
+
+    StickerRepository m_repository;
+    StickerRuntime m_runtime;
+    StickerConfig m_config;
+    bool m_hasSticker;
+    mutable QMutex m_mutex;
+
     QTimer *m_autoSaveTimer;
-    QString m_configDirectory;
-    QString m_defaultConfigFile;
     bool m_isCleanedUp;
 };
 

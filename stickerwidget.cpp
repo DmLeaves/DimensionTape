@@ -22,6 +22,9 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     , m_animationAngle(0)
     , m_maxWindowSize(600)
     , m_editMode(false)
+    , m_rotating(false)
+    , m_rotateStartAngle(0.0)
+    , m_rotateStartRotation(0.0)
 {
     // 基础设置
     setAttribute(Qt::WA_TranslucentBackground, true);
@@ -93,7 +96,7 @@ void StickerWidget::initializeWidget()
         createDefaultSticker();
     }
 
-    updateTransformedWindowSize();
+    updateTransformedWindowSize(ResizeAnchor::KeepTopLeft);
 
     // 应用遮罩
     applyMask();
@@ -295,7 +298,7 @@ void StickerWidget::applyMask()
     }
 }
 
-void StickerWidget::updateTransformedWindowSize()
+void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
 {
     StickerTransformLayoutResult layout;
     if (!StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
@@ -323,17 +326,28 @@ void StickerWidget::updateTransformedWindowSize()
     }
 
     if (layout.windowSize != size()) {
+        QPoint oldTopLeft = pos();
         QPoint oldCenter = geometry().center();
         setFixedSize(layout.windowSize);
-        QPoint newTopLeft = oldCenter - QPoint(layout.windowSize.width() / 2,
-                                               layout.windowSize.height() / 2);
-        move(newTopLeft);
-        if (m_config.position != pos()) {
-            m_config.position = pos();
-            if (m_initialized) {
-                emit configChanged(m_config);
-            }
+        QPoint newTopLeft = oldTopLeft;
+        if (anchor == ResizeAnchor::KeepCenter) {
+            newTopLeft = oldCenter - QPoint(layout.windowSize.width() / 2,
+                                            layout.windowSize.height() / 2);
         }
+        move(newTopLeft);
+    }
+
+    bool configDirty = false;
+    if (m_config.position != pos()) {
+        m_config.position = pos();
+        configDirty = true;
+    }
+    if (m_config.size != size()) {
+        m_config.size = size();
+        configDirty = true;
+    }
+    if (configDirty && m_initialized) {
+        emit configChanged(m_config);
     }
 }
 
@@ -415,21 +429,34 @@ void StickerWidget::paintEvent(QPaintEvent *)
 void StickerWidget::mousePressEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
         return;
     }
 
     if (event->button() == Qt::LeftButton) {
-        handleMouseTrigger(MouseTrigger::LeftClick);
+        if (!m_editMode) {
+            handleMouseTrigger(MouseTrigger::LeftClick);
+        }
 
         // 左键拖动（如果允许拖动）
-        if (m_config.allowDrag) {
+        if (m_editMode && (event->modifiers() & Qt::ShiftModifier)) {
+            m_rotating = true;
+            m_dragging = false;
+            m_rotateStartAngle = angleFromCenter(event->pos());
+            m_rotateStartRotation = m_config.transform.rotation;
+            event->accept();
+            return;
+        }
+
+        if (m_config.allowDrag || m_editMode) {
             m_dragging = true;
             m_dragPosition = event->globalPos() - frameGeometry().topLeft();
         }
     } else if (event->button() == Qt::RightButton) {
-        handleMouseTrigger(MouseTrigger::RightClick);
+        if (!m_editMode) {
+            handleMouseTrigger(MouseTrigger::RightClick);
+        }
         // 右键不再用于拖动，只触发右键事件
     }
 
@@ -439,23 +466,42 @@ void StickerWidget::mousePressEvent(QMouseEvent *event)
 void StickerWidget::mouseMoveEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
         return;
     }
 
-    if (m_dragging && m_config.allowDrag) {
+    if (m_rotating) {
+        double angle = angleFromCenter(event->pos());
+        double delta = qRadiansToDegrees(angle - m_rotateStartAngle);
+        m_config.transform.rotation = m_rotateStartRotation + delta;
+        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
+        applyMask();
+        update();
+        return;
+    }
+
+    if (m_dragging && (m_config.allowDrag || m_editMode)) {
         QPoint newPos = event->globalPos() - m_dragPosition;
-        move(newPos);
-        m_config.position = newPos;
+        if (newPos != m_config.position) {
+            move(newPos);
+            m_config.position = newPos;
+            emit configChanged(m_config);
+        }
     }
 }
 
 void StickerWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
+        return;
+    }
+
+    if (m_rotating) {
+        m_rotating = false;
+        emit configChanged(m_config);
         return;
     }
 
@@ -469,7 +515,12 @@ void StickerWidget::mouseReleaseEvent(QMouseEvent *event)
 void StickerWidget::mouseDoubleClickEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
+        event->ignore();
+        return;
+    }
+
+    if (m_editMode) {
         event->ignore();
         return;
     }
@@ -481,8 +532,30 @@ void StickerWidget::mouseDoubleClickEvent(QMouseEvent *event)
 void StickerWidget::wheelEvent(QWheelEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
+        return;
+    }
+
+    if (m_editMode && (event->modifiers() & Qt::ControlModifier)) {
+        double delta = event->angleDelta().y() / 120.0;
+        m_config.transform.rotation += delta * 5.0;
+        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
+        applyMask();
+        update();
+        emit configChanged(m_config);
+        return;
+    }
+
+    if (m_editMode) {
+        double delta = event->angleDelta().y() / 120.0;
+        double factor = 1.0 + delta * 0.05;
+        m_config.transform.scaleX = qBound(0.1, m_config.transform.scaleX * factor, 5.0);
+        m_config.transform.scaleY = qBound(0.1, m_config.transform.scaleY * factor, 5.0);
+        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
+        applyMask();
+        update();
+        emit configChanged(m_config);
         return;
     }
 
@@ -496,7 +569,7 @@ void StickerWidget::wheelEvent(QWheelEvent *event)
 void StickerWidget::enterEvent(QEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
         return;
     }
@@ -515,7 +588,7 @@ void StickerWidget::enterEvent(QEvent *event)
 void StickerWidget::leaveEvent(QEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
         return;
     }
@@ -534,7 +607,7 @@ void StickerWidget::leaveEvent(QEvent *event)
 void StickerWidget::contextMenuEvent(QContextMenuEvent *event)
 {
     // 如果启用了点击穿透，不显示右键菜单
-    if (m_config.clickThrough) {
+    if (m_config.clickThrough && !m_editMode) {
         event->ignore();
         return;
     }
@@ -665,6 +738,7 @@ void StickerWidget::setEditMode(bool enabled)
     }
 
     m_editMode = enabled;
+    m_rotating = false;
     updateWindowFlags();
     updateContextMenuState();
     update();
@@ -675,11 +749,18 @@ void StickerWidget::onToggleEditMode()
     setEditMode(!m_editMode);
 }
 
+double StickerWidget::angleFromCenter(const QPoint &point) const
+{
+    QPointF center = rect().center();
+    QPointF delta = point - center;
+    return qAtan2(delta.y(), delta.x());
+}
+
 StickerConfig StickerWidget::getConfig() const
 {
     StickerConfig config = m_config;
     config.position = pos();
-    config.size = m_config.size;
+    config.size = size();
     config.visible = isVisible();
     return config;
 }
@@ -702,7 +783,7 @@ void StickerWidget::updateConfig(const StickerConfig &config)
         createDefaultSticker();
     }
 
-    updateTransformedWindowSize();
+    updateTransformedWindowSize(ResizeAnchor::KeepTopLeft);
     applyMask();
 
     // 重新应用窗口设置

@@ -58,6 +58,11 @@ private slots:
     void onToggleEditMode();
 
 private:
+    enum class ResizeAnchor {
+        KeepCenter,
+        KeepTopLeft
+    };
+
     void initializeWidget();
     void loadStickerImage(const QString &imagePath);
     void createDefaultSticker();
@@ -66,13 +71,14 @@ private:
     QPixmap scalePixmapKeepRatio(const QPixmap &pixmap, int maxSize);
     QRect computeContentRect(const QPixmap &pixmap) const;
     QSize baseRenderSize() const;
-    void updateTransformedWindowSize();
+    void updateTransformedWindowSize(ResizeAnchor anchor = ResizeAnchor::KeepCenter);
     void setupContextMenu();
     void updateContextMenuState();  // 添加这个函数声明
     void handleMouseTrigger(MouseTrigger trigger);
     void updateWindowFlags();
     void updateClickThrough(); // 新增
     void setEditMode(bool enabled);
+    double angleFromCenter(const QPoint &point) const;
 
     StickerConfig m_config;
     EventHandler *m_eventHandler;
@@ -85,6 +91,9 @@ private:
     double m_animationAngle;
     int m_maxWindowSize;
     bool m_editMode;
+    bool m_rotating;
+    double m_rotateStartAngle;
+    double m_rotateStartRotation;
 
     QTimer *m_animationTimer;
     QPropertyAnimation *m_opacityAnimation;

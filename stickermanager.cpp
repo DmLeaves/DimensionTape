@@ -88,18 +88,23 @@ void StickerManager::createStickerInternal(const StickerConfig &config)
         return;
     }
 
-    {
-        QMutexLocker locker(&m_mutex);
-        m_config = config;
-        m_hasSticker = true;
-    }
-
     m_runtime.createOrUpdate(config);
     updateRuntimeConnections();
 
-    emit stickerCreated(config);
+    StickerConfig actualConfig = config;
+    if (StickerWidget *widget = m_runtime.widget()) {
+        actualConfig = widget->getConfig();
+    }
+
+    {
+        QMutexLocker locker(&m_mutex);
+        m_config = actualConfig;
+        m_hasSticker = true;
+    }
+
+    emit stickerCreated(actualConfig);
     emit stickerConfigsUpdated(getAllConfigs());
-    qDebug() << "贴纸创建完成:" << config.id;
+    qDebug() << "贴纸创建完成:" << actualConfig.id;
 }
 
 void StickerManager::deleteSticker(const QString &stickerId)
@@ -134,20 +139,21 @@ void StickerManager::editSticker(const QString &stickerId, const StickerConfig &
         return;
     }
 
-    {
-        QMutexLocker locker(&m_mutex);
-        if (!m_hasSticker || m_config.id != stickerId) {
-            m_config = config;
-            m_hasSticker = true;
-        } else {
-            m_config = config;
-        }
-    }
-
     m_runtime.createOrUpdate(config);
     updateRuntimeConnections();
 
-    emit stickerConfigChanged(config);
+    StickerConfig actualConfig = config;
+    if (StickerWidget *widget = m_runtime.widget()) {
+        actualConfig = widget->getConfig();
+    }
+
+    {
+        QMutexLocker locker(&m_mutex);
+        m_config = actualConfig;
+        m_hasSticker = true;
+    }
+
+    emit stickerConfigChanged(actualConfig);
     emit stickerConfigsUpdated(getAllConfigs());
     qDebug() << "贴纸编辑完成:" << stickerId;
 }
@@ -225,14 +231,19 @@ bool StickerManager::loadConfigInternal()
         return false;
     }
 
-    {
-        QMutexLocker locker(&m_mutex);
-        m_config = config;
-        m_hasSticker = true;
-    }
-
     m_runtime.createOrUpdate(config);
     updateRuntimeConnections();
+
+    StickerConfig actualConfig = config;
+    if (StickerWidget *widget = m_runtime.widget()) {
+        actualConfig = widget->getConfig();
+    }
+
+    {
+        QMutexLocker locker(&m_mutex);
+        m_config = actualConfig;
+        m_hasSticker = true;
+    }
 
     emit configLoaded(getAllConfigs());
     emit stickerConfigsUpdated(getAllConfigs());

@@ -11,7 +11,6 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_centralWidget(nullptr)
     , m_currentStickerId("")
-    , m_hasSticker(false)
     , m_isEditing(false)
     , m_updatingEditor(false)
     , m_updatingList(false)
@@ -396,7 +395,7 @@ void MainWindow::onCreateStickerClicked()
 {
     StickerConfig config;
     config.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    config.name = QString("贴纸 1");
+    config.name = QString("贴纸 %1").arg(m_configs.size() + 1);
     config.position = QPoint(100, 100);
     config.size = QSize(200, 200);
     config.isDesktopMode = true;
@@ -463,7 +462,9 @@ void MainWindow::onStickerListSelectionChanged()
         m_editStickerBtn->setEnabled(true);
         m_deleteStickerBtn->setEnabled(true);
 
-        if (m_hasSticker && m_currentConfig.id == stickerId) {
+        int index = findConfigIndex(stickerId);
+        if (index >= 0) {
+            m_currentConfig = m_configs.at(index);
             updateStickerEditor(m_currentConfig);
             m_editBaseline = m_currentConfig;
             m_isEditing = false;
@@ -568,7 +569,10 @@ void MainWindow::onEventTableItemChanged(QTableWidgetItem *item)
 
 void MainWindow::beginEditSession()
 {
-    if (!m_hasSticker || m_currentStickerId.isEmpty()) {
+    if (m_currentStickerId.isEmpty()) {
+        return;
+    }
+    if (findConfigIndex(m_currentStickerId) < 0) {
         return;
     }
     if (!m_isEditing) {
@@ -582,7 +586,10 @@ void MainWindow::applyPreviewIfEditing()
     if (m_updatingEditor) {
         return;
     }
-    if (!m_hasSticker || m_currentStickerId.isEmpty()) {
+    if (m_currentStickerId.isEmpty()) {
+        return;
+    }
+    if (findConfigIndex(m_currentStickerId) < 0) {
         return;
     }
     beginEditSession();
@@ -594,6 +601,10 @@ void MainWindow::applyPreviewIfEditing()
 void MainWindow::cancelPendingEdits()
 {
     if (!m_isEditing || m_currentStickerId.isEmpty()) {
+        return;
+    }
+    if (findConfigIndex(m_currentStickerId) < 0) {
+        m_isEditing = false;
         return;
     }
     emit editStickerWithConfig(m_currentStickerId, m_editBaseline);
@@ -649,27 +660,44 @@ void MainWindow::onSaveConfigClicked()
 
 void MainWindow::onStickerCreated(const StickerConfig &config)
 {
-    m_currentConfig = config;
-    m_hasSticker = true;
-    if (m_currentStickerId.isEmpty()) {
-        m_currentStickerId = config.id;
+    int index = findConfigIndex(config.id);
+    if (index >= 0) {
+        m_configs[index] = config;
+    } else {
+        m_configs.append(config);
     }
+
+    m_currentStickerId = config.id;
+    m_currentConfig = config;
     m_editBaseline = config;
     m_isEditing = false;
+
     updateStickerList();
+    updateStickerEditor(config);
     statusBar()->showMessage(QString("贴纸 '%1' 已创建").arg(config.name), 3000);
 }
 
 void MainWindow::onStickerDeleted(const QString &stickerId)
 {
-    if (m_currentStickerId == stickerId) {
-        m_currentStickerId = "";
-        clearStickerEditor();
+    int index = findConfigIndex(stickerId);
+    if (index >= 0) {
+        m_configs.removeAt(index);
     }
-    m_hasSticker = false;
-    m_currentConfig = StickerConfig();
-    m_editBaseline = StickerConfig();
-    m_isEditing = false;
+
+    if (m_currentStickerId == stickerId) {
+        m_isEditing = false;
+        if (!m_configs.isEmpty()) {
+            m_currentConfig = m_configs.first();
+            m_currentStickerId = m_currentConfig.id;
+            m_editBaseline = m_currentConfig;
+            updateStickerEditor(m_currentConfig);
+        } else {
+            m_currentStickerId = "";
+            m_currentConfig = StickerConfig();
+            m_editBaseline = StickerConfig();
+            clearStickerEditor();
+        }
+    }
 
     updateStickerList();
     statusBar()->showMessage("贴纸已删除", 3000);
@@ -677,16 +705,25 @@ void MainWindow::onStickerDeleted(const QString &stickerId)
 
 void MainWindow::onStickerConfigChanged(const StickerConfig &config)
 {
-    m_currentConfig = config;
-    m_hasSticker = true;
+    int index = findConfigIndex(config.id);
+    if (index >= 0) {
+        m_configs[index] = config;
+    } else {
+        m_configs.append(config);
+    }
+
     if (m_currentStickerId.isEmpty()) {
         m_currentStickerId = config.id;
+        m_currentConfig = config;
+        m_editBaseline = config;
+        m_isEditing = false;
     }
 
     updateStickerList();
 
     // 如果是当前选中的贴纸，更新编辑器
     if (m_currentStickerId == config.id) {
+        m_currentConfig = config;
         updateStickerEditor(config);
         if (!m_isEditing) {
             m_editBaseline = config;
@@ -774,7 +811,7 @@ void MainWindow::updateEventTable()
         return;
     }
 
-    if (!m_hasSticker || m_currentConfig.id != m_currentStickerId) {
+    if (findConfigIndex(m_currentStickerId) < 0 || m_currentConfig.id != m_currentStickerId) {
         return;
     }
 
@@ -799,70 +836,62 @@ void MainWindow::updateStickerList()
     QString currentId = m_currentStickerId; // 保存当前选择
     m_updatingList = true;
 
-    if (!m_hasSticker) {
-        m_stickerList->clear();
-        m_updatingList = false;
-        statusBar()->showMessage(QString("共 %1 个贴纸").arg(0), 3000);
-        return;
-    }
-
-    if (m_stickerList->count() == 1) {
-        QListWidgetItem *item = m_stickerList->item(0);
-        if (item && item->data(Qt::UserRole).toString() == m_currentConfig.id) {
-            item->setText(m_currentConfig.name);
-            item->setData(Qt::UserRole, m_currentConfig.id);
-            if (!m_currentConfig.visible) {
-                item->setTextColor(QColor(128, 128, 128));
-            } else {
-                item->setTextColor(QColor(0, 0, 0));
-            }
-            if (m_currentConfig.id == currentId) {
-                item->setSelected(true);
-            }
-            m_updatingList = false;
-            statusBar()->showMessage(QString("共 %1 个贴纸").arg(1), 3000);
-            return;
+    m_stickerList->clear();
+    for (const StickerConfig &config : m_configs) {
+        QListWidgetItem *item = new QListWidgetItem(config.name);
+        item->setData(Qt::UserRole, config.id);
+        if (!config.visible) {
+            item->setTextColor(QColor(128, 128, 128));
+        }
+        m_stickerList->addItem(item);
+        if (config.id == currentId) {
+            item->setSelected(true);
         }
     }
 
-    m_stickerList->clear();
-    QListWidgetItem *item = new QListWidgetItem(m_currentConfig.name);
-    item->setData(Qt::UserRole, m_currentConfig.id);
-
-    if (!m_currentConfig.visible) {
-        item->setTextColor(QColor(128, 128, 128));
-    }
-
-    m_stickerList->addItem(item);
-
-    if (m_currentConfig.id == currentId) {
-        item->setSelected(true);
-    }
-
     m_updatingList = false;
-    statusBar()->showMessage(QString("共 %1 个贴纸").arg(1), 3000);
+    statusBar()->showMessage(QString("共 %1 个贴纸").arg(m_configs.size()), 3000);
 }
 
 void MainWindow::onStickerConfigsUpdated(const QList<StickerConfig> &configs)
 {
     qDebug() << "更新贴纸列表，共" << configs.size() << "个贴纸";
 
-    if (configs.isEmpty()) {
-        m_hasSticker = false;
+    m_configs = configs;
+    if (m_configs.isEmpty()) {
         m_currentStickerId = "";
         m_currentConfig = StickerConfig();
         m_editBaseline = StickerConfig();
         m_isEditing = false;
         clearStickerEditor();
+        updateStickerList();
+        return;
+    }
+
+    int index = findConfigIndex(m_currentStickerId);
+    if (index < 0) {
+        m_currentConfig = m_configs.first();
+        m_currentStickerId = m_currentConfig.id;
+        m_isEditing = false;
+        m_editBaseline = m_currentConfig;
+        updateStickerEditor(m_currentConfig);
     } else {
-        m_currentConfig = configs.first();
-        m_hasSticker = true;
-        if (m_currentStickerId.isEmpty()) {
-            m_currentStickerId = m_currentConfig.id;
-        }
+        m_currentConfig = m_configs.at(index);
         if (!m_isEditing) {
             m_editBaseline = m_currentConfig;
         }
+        updateStickerEditor(m_currentConfig);
     }
+
     updateStickerList();
+}
+
+int MainWindow::findConfigIndex(const QString &stickerId) const
+{
+    for (int i = 0; i < m_configs.size(); ++i) {
+        if (m_configs.at(i).id == stickerId) {
+            return i;
+        }
+    }
+    return -1;
 }

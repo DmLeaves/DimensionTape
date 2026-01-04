@@ -88,6 +88,7 @@ private:
     StickerConfig getStickerConfigFromEditor() const;
     void updateEventTable();
     void updateStickerList();
+    int findConfigIndex(const QString &stickerId) const;
 
     // UI 组件
     QWidget *m_centralWidget;
@@ -141,10 +142,10 @@ private:
     QPushButton *m_saveConfigBtn;
 
     // 数据
+    QList<StickerConfig> m_configs;
     StickerConfig m_currentConfig;
     StickerConfig m_editBaseline;
     QString m_currentStickerId;
-    bool m_hasSticker;
     bool m_isEditing;
     bool m_updatingEditor;
     bool m_updatingList;

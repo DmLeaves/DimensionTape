@@ -23,7 +23,6 @@ StickerManager::StickerManager(QObject *parent)
     : QObject(parent)
     , m_repository()
     , m_runtime(this)
-    , m_hasSticker(false)
     , m_autoSaveTimer(new QTimer(this))
     , m_isCleanedUp(false)
 {
@@ -33,7 +32,6 @@ StickerManager::StickerManager(QObject *parent)
     m_autoSaveTimer->start();
 
     loadConfigInternal();
-    updateRuntimeConnections();
 
     qDebug() << "贴纸管理器初始化完成";
 }
@@ -62,7 +60,7 @@ void StickerManager::cleanup()
     destroyStickerInternal();
 
     QMutexLocker locker(&m_mutex);
-    m_hasSticker = false;
+    m_configs.clear();
 
     qDebug() << "贴纸管理器清理完成";
 }
@@ -71,7 +69,12 @@ void StickerManager::createSticker()
 {
     StickerConfig config;
     config.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    config.name = QString("贴纸 1");
+    int nextIndex = 1;
+    {
+        QMutexLocker locker(&m_mutex);
+        nextIndex = m_configs.size() + 1;
+    }
+    config.name = QString("贴纸 %1").arg(nextIndex);
     config.position = QPoint(100, 100);
     config.size = QSize(200, 200);
     config.isDesktopMode = true;
@@ -88,21 +91,36 @@ void StickerManager::createStickerInternal(const StickerConfig &config)
         return;
     }
 
-    m_runtime.createOrUpdate(config);
-    updateRuntimeConnections();
-
-    StickerConfig actualConfig = config;
-    if (StickerWidget *widget = m_runtime.widget()) {
-        actualConfig = widget->getConfig();
+    StickerConfig createdConfig = config;
+    if (createdConfig.id.isEmpty()) {
+        createdConfig.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     }
+
+    StickerWidget *widget = m_runtime.createOrUpdate(createdConfig);
+    if (!widget) {
+        return;
+    }
+    connectWidgetSignals(widget);
+
+    StickerConfig actualConfig = widget->getConfig();
+    bool isNew = false;
 
     {
         QMutexLocker locker(&m_mutex);
-        m_config = actualConfig;
-        m_hasSticker = true;
+        int index = findConfigIndex(actualConfig.id);
+        if (index >= 0) {
+            m_configs[index] = actualConfig;
+        } else {
+            m_configs.append(actualConfig);
+            isNew = true;
+        }
     }
 
-    emit stickerCreated(actualConfig);
+    if (isNew) {
+        emit stickerCreated(actualConfig);
+    } else {
+        emit stickerConfigChanged(actualConfig);
+    }
     emit stickerConfigsUpdated(getAllConfigs());
     qDebug() << "贴纸创建完成:" << actualConfig.id;
 }
@@ -115,17 +133,23 @@ void StickerManager::deleteSticker(const QString &stickerId)
     }
 
     StickerConfig oldConfig;
+    bool removed = false;
     {
         QMutexLocker locker(&m_mutex);
-        if (!m_hasSticker || m_config.id != stickerId) {
+        int index = findConfigIndex(stickerId);
+        if (index < 0) {
             return;
         }
-        oldConfig = m_config;
-        m_hasSticker = false;
+        oldConfig = m_configs.at(index);
+        m_configs.removeAt(index);
+        removed = true;
     }
 
-    destroyStickerInternal();
-    m_repository.clear();
+    if (!removed) {
+        return;
+    }
+
+    m_runtime.destroy(stickerId);
 
     emit stickerDeleted(oldConfig.id);
     emit stickerConfigsUpdated(getAllConfigs());
@@ -139,20 +163,32 @@ void StickerManager::editSticker(const QString &stickerId, const StickerConfig &
         return;
     }
 
-    m_runtime.createOrUpdate(config);
-    updateRuntimeConnections();
+    StickerConfig updatedConfig = config;
+    updatedConfig.id = stickerId;
 
-    StickerConfig actualConfig = config;
-    if (StickerWidget *widget = m_runtime.widget()) {
-        actualConfig = widget->getConfig();
+    StickerWidget *widget = m_runtime.createOrUpdate(updatedConfig);
+    if (!widget) {
+        return;
     }
+    connectWidgetSignals(widget);
+
+    StickerConfig actualConfig = widget->getConfig();
+    bool isNew = false;
 
     {
         QMutexLocker locker(&m_mutex);
-        m_config = actualConfig;
-        m_hasSticker = true;
+        int index = findConfigIndex(actualConfig.id);
+        if (index >= 0) {
+            m_configs[index] = actualConfig;
+        } else {
+            m_configs.append(actualConfig);
+            isNew = true;
+        }
     }
 
+    if (isNew) {
+        emit stickerCreated(actualConfig);
+    }
     emit stickerConfigChanged(actualConfig);
     emit stickerConfigsUpdated(getAllConfigs());
     qDebug() << "贴纸编辑完成:" << stickerId;
@@ -161,27 +197,26 @@ void StickerManager::editSticker(const QString &stickerId, const StickerConfig &
 void StickerManager::editStickerFromMainWindow(const QString &stickerId)
 {
     QMutexLocker locker(&m_mutex);
-    if (m_hasSticker && m_config.id == stickerId) {
-        emit stickerConfigChanged(m_config);
+    int index = findConfigIndex(stickerId);
+    if (index >= 0) {
+        emit stickerConfigChanged(m_configs.at(index));
     }
 }
 
 void StickerManager::destroyStickerInternal()
 {
-    m_runtime.destroy();
+    m_runtime.clear();
 }
 
-void StickerManager::updateRuntimeConnections()
+void StickerManager::connectWidgetSignals(StickerWidget *widget)
 {
-    StickerWidget *widget = m_runtime.widget();
     if (!widget) {
         return;
     }
 
-    widget->disconnect(this);
-    connect(widget, &StickerWidget::configChanged, this, &StickerManager::onStickerConfigChanged);
-    connect(widget, &StickerWidget::deleteRequested, this, &StickerManager::onStickerDeleteRequested);
-    connect(widget, &StickerWidget::editRequested, this, &StickerManager::onStickerEditRequested);
+    connect(widget, &StickerWidget::configChanged, this, &StickerManager::onStickerConfigChanged, Qt::UniqueConnection);
+    connect(widget, &StickerWidget::deleteRequested, this, &StickerManager::onStickerDeleteRequested, Qt::UniqueConnection);
+    connect(widget, &StickerWidget::editRequested, this, &StickerManager::onStickerEditRequested, Qt::UniqueConnection);
 }
 
 bool StickerManager::loadConfig()
@@ -218,51 +253,59 @@ void StickerManager::saveConfig(const QString &filePath)
 
 bool StickerManager::loadConfigInternal()
 {
-    StickerConfig config;
+    QList<StickerConfig> configs;
     bool hasData = false;
-    m_repository.load(config, hasData);
+    m_repository.load(configs, hasData);
 
-    if (!hasData) {
+    if (!hasData || configs.isEmpty()) {
+        m_runtime.clear();
         {
             QMutexLocker locker(&m_mutex);
-            m_hasSticker = false;
+            m_configs.clear();
         }
         emit stickerConfigsUpdated(getAllConfigs());
         return false;
     }
 
-    m_runtime.createOrUpdate(config);
-    updateRuntimeConnections();
+    m_runtime.clear();
 
-    StickerConfig actualConfig = config;
-    if (StickerWidget *widget = m_runtime.widget()) {
-        actualConfig = widget->getConfig();
+    QList<StickerConfig> actualConfigs;
+    actualConfigs.reserve(configs.size());
+    for (StickerConfig config : configs) {
+        if (config.id.isEmpty()) {
+            config.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        }
+        StickerWidget *widget = m_runtime.createOrUpdate(config);
+        connectWidgetSignals(widget);
+        if (widget) {
+            actualConfigs.append(widget->getConfig());
+        }
     }
 
     {
         QMutexLocker locker(&m_mutex);
-        m_config = actualConfig;
-        m_hasSticker = true;
+        m_configs = actualConfigs;
     }
 
-    emit configLoaded(getAllConfigs());
-    emit stickerConfigsUpdated(getAllConfigs());
+    emit configLoaded(actualConfigs);
+    emit stickerConfigsUpdated(actualConfigs);
     qDebug() << "配置加载完成";
     return true;
 }
 
 bool StickerManager::saveConfigInternal()
 {
-    StickerConfig config;
+    QList<StickerConfig> configs;
     {
         QMutexLocker locker(&m_mutex);
-        if (!m_hasSticker) {
-            return m_repository.clear();
-        }
-        config = m_config;
+        configs = m_configs;
     }
 
-    if (!m_repository.save(config)) {
+    if (configs.isEmpty()) {
+        return m_repository.clear();
+    }
+
+    if (!m_repository.save(configs)) {
         return false;
     }
 
@@ -274,19 +317,16 @@ bool StickerManager::saveConfigInternal()
 QList<StickerConfig> StickerManager::getAllConfigs() const
 {
     QMutexLocker locker(&m_mutex);
-    if (!m_hasSticker) {
-        return {};
-    }
-    return {m_config};
+    return m_configs;
 }
 
 StickerWidget* StickerManager::getStickerWidget(const QString &stickerId) const
 {
     QMutexLocker locker(&m_mutex);
-    if (!m_hasSticker || m_config.id != stickerId) {
+    if (findConfigIndex(stickerId) < 0) {
         return nullptr;
     }
-    return m_runtime.widget();
+    return m_runtime.widget(stickerId);
 }
 
 void StickerManager::onStickerConfigChanged(const StickerConfig &config)
@@ -296,12 +336,25 @@ void StickerManager::onStickerConfigChanged(const StickerConfig &config)
         return;
     }
 
-    {
-        QMutexLocker locker(&m_mutex);
-        m_config = config;
-        m_hasSticker = true;
+    if (config.id.isEmpty()) {
+        return;
     }
 
+    bool isNew = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        int index = findConfigIndex(config.id);
+        if (index >= 0) {
+            m_configs[index] = config;
+        } else {
+            m_configs.append(config);
+            isNew = true;
+        }
+    }
+
+    if (isNew) {
+        emit stickerCreated(config);
+    }
     emit stickerConfigChanged(config);
     emit stickerConfigsUpdated(getAllConfigs());
 }
@@ -340,4 +393,14 @@ void StickerManager::createDefaultSticker()
     config.opacity = 1.0;
 
     createStickerInternal(config);
+}
+
+int StickerManager::findConfigIndex(const QString &stickerId) const
+{
+    for (int i = 0; i < m_configs.size(); ++i) {
+        if (m_configs.at(i).id == stickerId) {
+            return i;
+        }
+    }
+    return -1;
 }

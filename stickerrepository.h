@@ -2,6 +2,7 @@
 #define STICKERREPOSITORY_H
 
 #include <QString>
+#include <QList>
 #include "StickerData.h"
 
 class StickerRepository
@@ -9,8 +10,8 @@ class StickerRepository
 public:
     StickerRepository();
 
-    bool load(StickerConfig &outConfig, bool &hasData) const;
-    bool save(const StickerConfig &config) const;
+    bool load(QList<StickerConfig> &outConfigs, bool &hasData) const;
+    bool save(const QList<StickerConfig> &configs) const;
     bool clear() const;
 
     QString configFilePath() const;

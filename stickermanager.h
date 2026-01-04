@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QMutex>
 #include <QTimer>
+#include <QList>
 #include "StickerData.h"
 #include "stickerrepository.h"
 #include "stickerruntime.h"
@@ -61,12 +62,12 @@ private:
     bool saveConfigInternal();
     void destroyStickerInternal();
     void createDefaultSticker();
-    void updateRuntimeConnections();
+    void connectWidgetSignals(StickerWidget *widget);
+    int findConfigIndex(const QString &stickerId) const;
 
     StickerRepository m_repository;
     StickerRuntime m_runtime;
-    StickerConfig m_config;
-    bool m_hasSticker;
+    QList<StickerConfig> m_configs;
     mutable QMutex m_mutex;
 
     QTimer *m_autoSaveTimer;

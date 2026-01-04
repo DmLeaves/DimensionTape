@@ -3,13 +3,13 @@
 
 #include <QWidget>
 #include <QTimer>
-#include <QPixmap>
 #include <QPoint>
-#include <QBitmap>
 #include <QMenu>
 #include <QPropertyAnimation>
 #include "StickerData.h"
 #include "EventHandler.h"
+#include "stickerimage.h"
+#include "stickerrenderer.h"
 
 class StickerWidget : public QWidget
 {
@@ -67,10 +67,6 @@ private:
     void loadStickerImage(const QString &imagePath);
     void createDefaultSticker();
     void applyMask();
-    QBitmap createMaskFromPixmap(const QPixmap &pixmap);
-    QPixmap scalePixmapKeepRatio(const QPixmap &pixmap, int maxSize);
-    QRect computeContentRect(const QPixmap &pixmap) const;
-    QSize baseRenderSize() const;
     void updateTransformedWindowSize(ResizeAnchor anchor = ResizeAnchor::KeepCenter);
     void setupContextMenu();
     void updateContextMenuState();  // 添加这个函数声明
@@ -83,13 +79,12 @@ private:
     StickerConfig m_config;
     EventHandler *m_eventHandler;
 
-    QPixmap m_stickerPixmap;
-    QRect m_contentRect;
+    StickerImage m_image;
+    StickerRenderer m_renderer;
     QPoint m_dragPosition;
     bool m_dragging;
     bool m_initialized;
     double m_animationAngle;
-    int m_maxWindowSize;
     bool m_editMode;
     bool m_rotating;
     double m_rotateStartAngle;

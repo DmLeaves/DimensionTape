@@ -24,8 +24,9 @@ QString StickerRepository::configFilePath() const
     return m_defaultConfigFile;
 }
 
-bool StickerRepository::load(StickerConfig &outConfig, bool &hasData) const
+bool StickerRepository::load(QList<StickerConfig> &outConfigs, bool &hasData) const
 {
+    outConfigs.clear();
     hasData = false;
     QFile file(m_defaultConfigFile);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -43,29 +44,40 @@ bool StickerRepository::load(StickerConfig &outConfig, bool &hasData) const
     }
 
     QJsonObject root = doc.object();
-    if (root.contains("sticker") && root["sticker"].isObject()) {
-        outConfig.fromJson(root["sticker"].toObject());
-        hasData = true;
+    if (root.contains("stickers") && root["stickers"].isArray()) {
+        QJsonArray stickersArray = root["stickers"].toArray();
+        for (const QJsonValue &value : stickersArray) {
+            if (!value.isObject()) {
+                continue;
+            }
+            StickerConfig config;
+            config.fromJson(value.toObject());
+            outConfigs.append(config);
+        }
+        hasData = !outConfigs.isEmpty();
         return true;
     }
 
-    if (root.contains("stickers") && root["stickers"].isArray()) {
-        QJsonArray stickersArray = root["stickers"].toArray();
-        if (!stickersArray.isEmpty() && stickersArray.first().isObject()) {
-            outConfig.fromJson(stickersArray.first().toObject());
-            hasData = true;
-            return true;
-        }
+    if (root.contains("sticker") && root["sticker"].isObject()) {
+        StickerConfig config;
+        config.fromJson(root["sticker"].toObject());
+        outConfigs.append(config);
+        hasData = true;
+        return true;
     }
 
     return true;
 }
 
-bool StickerRepository::save(const StickerConfig &config) const
+bool StickerRepository::save(const QList<StickerConfig> &configs) const
 {
     QJsonObject root;
-    root["version"] = "2.0";
-    root["sticker"] = config.toJson();
+    root["version"] = "3.0";
+    QJsonArray stickersArray;
+    for (const StickerConfig &config : configs) {
+        stickersArray.append(config.toJson());
+    }
+    root["stickers"] = stickersArray;
 
     QJsonDocument doc(root);
 

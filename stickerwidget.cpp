@@ -17,10 +17,11 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     : QWidget(parent)
     , m_config(config)
     , m_eventHandler(new EventHandler(this))
+    , m_image(600)
+    , m_renderer(&m_image)
     , m_dragging(false)
     , m_initialized(false)
     , m_animationAngle(0)
-    , m_maxWindowSize(600)
     , m_editMode(false)
     , m_rotating(false)
     , m_rotateStartAngle(0.0)
@@ -122,177 +123,31 @@ void StickerWidget::loadStickerImage(const QString &imagePath)
 {
     qDebug() << "加载贴纸图像:" << imagePath;
 
-    QPixmap originalPixmap(imagePath);
-    if (originalPixmap.isNull()) {
+    if (!m_image.loadFromPath(imagePath)) {
         qDebug() << "无法加载图像，使用默认贴纸";
         createDefaultSticker();
         return;
     }
 
-    // 缩放大图片
-    m_stickerPixmap = scalePixmapKeepRatio(originalPixmap, m_maxWindowSize);
-    m_contentRect = computeContentRect(m_stickerPixmap);
-
-    // 更新窗口大小
-    if (m_stickerPixmap.size() != size()) {
-        setFixedSize(m_stickerPixmap.size());
-        m_config.size = m_stickerPixmap.size();
+    const QPixmap &pixmap = m_image.pixmap();
+    if (!pixmap.isNull() && pixmap.size() != size()) {
+        setFixedSize(pixmap.size());
+        m_config.size = pixmap.size();
     }
 
-    qDebug() << "贴纸图像加载完成，大小:" << m_stickerPixmap.size();
+    qDebug() << "贴纸图像加载完成，大小:" << pixmap.size();
 }
 
 void StickerWidget::createDefaultSticker()
 {
-    const int size = 200;
-    m_stickerPixmap = QPixmap(size, size);
-    m_stickerPixmap.fill(Qt::transparent);
-
-    QPainter painter(&m_stickerPixmap);
-    painter.setRenderHint(QPainter::Antialiasing);
-
-    // 绘制渐变圆形贴纸
-    QRadialGradient gradient(size * 0.4, size * 0.4, size * 0.4);
-    gradient.setColorAt(0.0, QColor(100, 150, 255, 255));
-    gradient.setColorAt(0.8, QColor(50, 100, 200, 255));
-    gradient.setColorAt(1.0, QColor(30, 70, 150, 255));
-
-    painter.setBrush(gradient);
-    painter.setPen(QPen(QColor(20, 50, 120), 3));
-
-    // 绘制主圆
-    const int margin = 10;
-    painter.drawEllipse(margin, margin, size - margin * 2, size - margin * 2);
-
-    // 绘制高光效果
-    painter.setBrush(QColor(255, 255, 255, 150));
-    painter.setPen(Qt::NoPen);
-    painter.drawEllipse(size * 0.25, size * 0.25, size * 0.3, size * 0.3);
-
-    // 添加装饰点
-    painter.setBrush(QColor(150, 200, 255, 200));
-    painter.drawEllipse(size * 0.7, size * 0.2, size * 0.1, size * 0.1);
-    painter.drawEllipse(size * 0.2, size * 0.7, size * 0.08, size * 0.08);
-
-    painter.end();
-
-    m_contentRect = computeContentRect(m_stickerPixmap);
+    m_image.createDefault();
 
     qDebug() << "默认贴纸创建完成";
 }
 
-QPixmap StickerWidget::scalePixmapKeepRatio(const QPixmap &pixmap, int maxSize)
-{
-    if (pixmap.isNull()) {
-        return QPixmap();
-    }
-
-    int originalWidth = pixmap.width();
-    int originalHeight = pixmap.height();
-
-    if (originalWidth <= maxSize && originalHeight <= maxSize) {
-        return pixmap;
-    }
-
-    double scale = qMin(double(maxSize) / originalWidth, double(maxSize) / originalHeight);
-    int newWidth = int(originalWidth * scale);
-    int newHeight = int(originalHeight * scale);
-
-    return pixmap.scaled(newWidth, newHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-}
-
-QRect StickerWidget::computeContentRect(const QPixmap &pixmap) const
-{
-    if (pixmap.isNull()) {
-        return QRect();
-    }
-
-    QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
-    int minX = image.width();
-    int minY = image.height();
-    int maxX = -1;
-    int maxY = -1;
-
-    for (int y = 0; y < image.height(); ++y) {
-        const QRgb *line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
-        for (int x = 0; x < image.width(); ++x) {
-            if (qAlpha(line[x]) > 50) {
-                if (x < minX) minX = x;
-                if (y < minY) minY = y;
-                if (x > maxX) maxX = x;
-                if (y > maxY) maxY = y;
-            }
-        }
-    }
-
-    if (maxX < minX || maxY < minY) {
-        return QRect(0, 0, image.width(), image.height());
-    }
-
-    return QRect(QPoint(minX, minY), QPoint(maxX, maxY));
-}
-
-QSize StickerWidget::baseRenderSize() const
-{
-    if (m_contentRect.isValid()) {
-        return m_contentRect.size();
-    }
-    return m_config.size.isEmpty() ? m_stickerPixmap.size() : m_config.size;
-}
-
-QBitmap StickerWidget::createMaskFromPixmap(const QPixmap &pixmap)
-{
-    if (pixmap.isNull()) {
-        return QBitmap();
-    }
-
-    QBitmap mask(pixmap.size());
-    mask.fill(Qt::color0);
-
-    QPainter maskPainter(&mask);
-    maskPainter.setBrush(Qt::color1);
-    maskPainter.setPen(Qt::NoPen);
-
-    QImage image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
-    const int width = image.width();
-    const int height = image.height();
-
-    for (int y = 0; y < height; ++y) {
-        const QRgb *line = reinterpret_cast<const QRgb*>(image.constScanLine(y));
-        for (int x = 0; x < width; ++x) {
-            if (qAlpha(line[x]) > 50) {
-                maskPainter.drawPoint(x, y);
-            }
-        }
-    }
-
-    return mask;
-}
-
 void StickerWidget::applyMask()
 {
-    if (m_stickerPixmap.isNull()) {
-        return;
-    }
-
-    StickerTransformLayoutResult layout;
-    if (!StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
-        return;
-    }
-
-    QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, size());
-
-    QPixmap maskSource(size());
-    maskSource.fill(Qt::transparent);
-
-    QPainter maskPainter(&maskSource);
-    maskPainter.setRenderHint(QPainter::Antialiasing);
-    maskPainter.setTransform(renderTransform, true);
-    QRectF sourceRect = m_contentRect.isValid() ? QRectF(m_contentRect) : QRectF(m_stickerPixmap.rect());
-    maskPainter.drawPixmap(layout.baseRect, m_stickerPixmap, sourceRect);
-    maskPainter.end();
-
-    QBitmap mask = createMaskFromPixmap(maskSource);
+    QBitmap mask = m_renderer.buildMask(m_config, size());
     if (!mask.isNull()) {
         setMask(mask);
     }
@@ -301,7 +156,7 @@ void StickerWidget::applyMask()
 void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
 {
     StickerTransformLayoutResult layout;
-    if (!StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
+    if (!m_renderer.calculateLayout(m_config, layout)) {
         return;
     }
 
@@ -311,8 +166,8 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
         QPointF windowCenter(layout.windowSize.width() / 2.0, layout.windowSize.height() / 2.0);
         QPointF centerOffset = mapped.center() - windowCenter;
         qDebug() << "变换调试"
-                 << "baseSize" << baseRenderSize()
-                 << "contentRect" << m_contentRect
+                 << "baseSize" << m_image.baseSize()
+                 << "contentRect" << m_image.contentRect()
                  << "windowSize" << layout.windowSize
                  << "bounds" << layout.bounds
                  << "baseRect" << layout.baseRect
@@ -393,7 +248,7 @@ void StickerWidget::updateClickThrough()
 
 void StickerWidget::paintEvent(QPaintEvent *)
 {
-    if (!m_initialized || m_stickerPixmap.isNull()) {
+    if (!m_initialized || m_image.isNull()) {
         return;
     }
 
@@ -401,15 +256,7 @@ void StickerWidget::paintEvent(QPaintEvent *)
     painter.setRenderHint(QPainter::Antialiasing);
 
     // 绘制贴纸图片（支持矩阵变换）
-    StickerTransformLayoutResult layout;
-    if (StickerTransformLayout::calculate(m_config, baseRenderSize(), layout)) {
-        QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, size());
-        painter.save();
-        painter.setTransform(renderTransform, true);
-        QRectF sourceRect = m_contentRect.isValid() ? QRectF(m_contentRect) : QRectF(m_stickerPixmap.rect());
-        painter.drawPixmap(layout.baseRect, m_stickerPixmap, sourceRect);
-        painter.restore();
-    }
+    m_renderer.paint(painter, m_config, size());
 
     // 默认贴纸的动画效果
     if (m_config.imagePath.isEmpty()) {

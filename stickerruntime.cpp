@@ -2,44 +2,64 @@
 
 StickerRuntime::StickerRuntime(QObject *parent)
     : QObject(parent)
-    , m_widget(nullptr)
 {
 }
 
 StickerRuntime::~StickerRuntime()
 {
-    destroy();
+    clear();
 }
 
-void StickerRuntime::createOrUpdate(const StickerConfig &config)
+StickerWidget *StickerRuntime::createOrUpdate(const StickerConfig &config)
 {
-    if (!m_widget) {
-        m_widget = new StickerWidget(config);
-        m_widget->show();
+    if (config.id.isEmpty()) {
+        return nullptr;
+    }
+
+    StickerWidget *widget = m_widgets.value(config.id, nullptr);
+    if (!widget) {
+        widget = new StickerWidget(config);
+        widget->show();
+        m_widgets.insert(config.id, widget);
+        return widget;
+    }
+
+    widget->updateConfig(config);
+    return widget;
+}
+
+void StickerRuntime::destroy(const QString &stickerId)
+{
+    StickerWidget *widget = m_widgets.value(stickerId, nullptr);
+    if (!widget) {
         return;
     }
 
-    m_widget->updateConfig(config);
+    widget->disconnect();
+    widget->close();
+    widget->deleteLater();
+    m_widgets.remove(stickerId);
 }
 
-void StickerRuntime::destroy()
+void StickerRuntime::clear()
 {
-    if (!m_widget) {
-        return;
+    const QList<QString> keys = m_widgets.keys();
+    for (const QString &key : keys) {
+        destroy(key);
     }
-
-    m_widget->disconnect();
-    m_widget->close();
-    m_widget->deleteLater();
-    m_widget = nullptr;
 }
 
-bool StickerRuntime::hasWidget() const
+bool StickerRuntime::hasWidget(const QString &stickerId) const
 {
-    return m_widget != nullptr;
+    return m_widgets.contains(stickerId);
 }
 
-StickerWidget *StickerRuntime::widget() const
+StickerWidget *StickerRuntime::widget(const QString &stickerId) const
 {
-    return m_widget;
+    return m_widgets.value(stickerId, nullptr);
+}
+
+QList<StickerWidget*> StickerRuntime::widgets() const
+{
+    return m_widgets.values();
 }

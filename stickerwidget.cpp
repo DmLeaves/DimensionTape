@@ -16,16 +16,14 @@
 StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     : QWidget(parent)
     , m_config(config)
-    , m_eventHandler(new EventHandler(this))
     , m_image(600)
     , m_renderer(&m_image)
-    , m_dragging(false)
+    , m_interactionController()
+    , m_editController(this, this)
+    , m_menuController(this)
+    , m_eventController(this)
     , m_initialized(false)
     , m_animationAngle(0)
-    , m_editMode(false)
-    , m_rotating(false)
-    , m_rotateStartAngle(0.0)
-    , m_rotateStartRotation(0.0)
 {
     // 基础设置
     setAttribute(Qt::WA_TranslucentBackground, true);
@@ -65,12 +63,31 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     // 设置上下文菜单
     setupContextMenu();
 
+    StickerInteractionController::Callbacks interactionCallbacks;
+    interactionCallbacks.widgetRect = [this]() { return rect(); };
+    interactionCallbacks.frameGeometry = [this]() { return frameGeometry(); };
+    interactionCallbacks.moveWindow = [this](const QPoint &pos) { move(pos); };
+    interactionCallbacks.updateTransformLayout = [this]() {
+        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
+    };
+    interactionCallbacks.applyMask = [this]() { applyMask(); };
+    interactionCallbacks.requestUpdate = [this]() { update(); };
+    interactionCallbacks.notifyConfigChanged = [this]() { emit configChanged(m_config); };
+    m_interactionController.setCallbacks(std::move(interactionCallbacks));
+
+    connect(&m_editController, &StickerEditController::editModeChanged, this, [this](bool) {
+        updateContextMenuState();
+        update();
+    });
+
+    m_eventController.setEvents(&m_config.events);
+
     // 连接事件处理器信号
-    connect(m_eventHandler, &EventHandler::eventExecuted, [this](const QString &message) {
+    connect(&m_eventController, &StickerEventController::eventExecuted, [this](const QString &message) {
         qDebug() << "贴纸事件执行成功:" << message;
     });
 
-    connect(m_eventHandler, &EventHandler::eventFailed, [this](const QString &error) {
+    connect(&m_eventController, &StickerEventController::eventFailed, [this](const QString &error) {
         qDebug() << "贴纸事件执行失败:" << error;
     });
 
@@ -103,7 +120,7 @@ void StickerWidget::initializeWidget()
     applyMask();
 
     // 设置窗口模式
-    updateWindowFlags();
+    m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
 
     // 设置点击穿透
     updateClickThrough();
@@ -160,7 +177,7 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
         return;
     }
 
-    if (m_editMode) {
+    if (m_editController.isEditMode()) {
         QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, layout.windowSize);
         QRectF mapped = renderTransform.mapRect(layout.baseRect);
         QPointF windowCenter(layout.windowSize.width() / 2.0, layout.windowSize.height() / 2.0);
@@ -206,33 +223,6 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
     }
 }
 
-void StickerWidget::updateWindowFlags()
-{
-    if (m_editMode) {
-        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-        setAttribute(Qt::WA_ShowWithoutActivating, false);
-        setFocusPolicy(Qt::StrongFocus);
-    } else if (m_config.isDesktopMode) {
-        setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnBottomHint);
-        setAttribute(Qt::WA_ShowWithoutActivating, true);
-        setFocusPolicy(Qt::NoFocus);
-    } else {
-        setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-        setAttribute(Qt::WA_ShowWithoutActivating, false);
-        setFocusPolicy(Qt::StrongFocus);
-    }
-
-    setAttribute(Qt::WA_TranslucentBackground, true);
-
-    if (m_initialized) {
-        show(); // 重新显示窗口以应用新的标志
-        if (m_editMode) {
-            raise();
-            activateWindow();
-        }
-    }
-}
-
 void StickerWidget::updateClickThrough()
 {
     if (m_config.clickThrough) {
@@ -264,7 +254,7 @@ void StickerWidget::paintEvent(QPaintEvent *)
         painter.fillRect(rect(), QColor(150, 200, 255, alpha));
     }
 
-    if (m_editMode) {
+    if (m_editController.isEditMode()) {
         QPen borderPen(QColor(0, 180, 0), 2);
         painter.setPen(borderPen);
         painter.setBrush(Qt::NoBrush);
@@ -276,32 +266,23 @@ void StickerWidget::paintEvent(QPaintEvent *)
 void StickerWidget::mousePressEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    bool editMode = m_editController.isEditMode();
+    if (m_config.clickThrough && !editMode) {
         event->ignore();
         return;
     }
 
     if (event->button() == Qt::LeftButton) {
-        if (!m_editMode) {
+        if (!editMode) {
             handleMouseTrigger(MouseTrigger::LeftClick);
         }
 
-        // 左键拖动（如果允许拖动）
-        if (m_editMode && (event->modifiers() & Qt::ShiftModifier)) {
-            m_rotating = true;
-            m_dragging = false;
-            m_rotateStartAngle = angleFromCenter(event->pos());
-            m_rotateStartRotation = m_config.transform.rotation;
+        if (m_interactionController.handleMousePress(event, m_config, m_config.allowDrag, editMode)) {
             event->accept();
             return;
         }
-
-        if (m_config.allowDrag || m_editMode) {
-            m_dragging = true;
-            m_dragPosition = event->globalPos() - frameGeometry().topLeft();
-        }
     } else if (event->button() == Qt::RightButton) {
-        if (!m_editMode) {
+        if (!editMode) {
             handleMouseTrigger(MouseTrigger::RightClick);
         }
         // 右键不再用于拖动，只触发右键事件
@@ -313,61 +294,42 @@ void StickerWidget::mousePressEvent(QMouseEvent *event)
 void StickerWidget::mouseMoveEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    bool editMode = m_editController.isEditMode();
+    if (m_config.clickThrough && !editMode) {
         event->ignore();
         return;
     }
 
-    if (m_rotating) {
-        double angle = angleFromCenter(event->pos());
-        double delta = qRadiansToDegrees(angle - m_rotateStartAngle);
-        m_config.transform.rotation = m_rotateStartRotation + delta;
-        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
-        applyMask();
-        update();
+    if (m_interactionController.handleMouseMove(event, m_config, m_config.allowDrag, editMode)) {
+        event->accept();
         return;
-    }
-
-    if (m_dragging && (m_config.allowDrag || m_editMode)) {
-        QPoint newPos = event->globalPos() - m_dragPosition;
-        if (newPos != m_config.position) {
-            move(newPos);
-            m_config.position = newPos;
-            emit configChanged(m_config);
-        }
     }
 }
 
 void StickerWidget::mouseReleaseEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    bool editMode = m_editController.isEditMode();
+    if (m_config.clickThrough && !editMode) {
         event->ignore();
         return;
     }
 
-    if (m_rotating) {
-        m_rotating = false;
-        emit configChanged(m_config);
+    if (m_interactionController.handleMouseRelease(event, m_config)) {
+        event->accept();
         return;
-    }
-
-    if (m_dragging) {
-        m_dragging = false;
-        update();
-        emit configChanged(m_config);
     }
 }
 
 void StickerWidget::mouseDoubleClickEvent(QMouseEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    if (m_config.clickThrough && !m_editController.isEditMode()) {
         event->ignore();
         return;
     }
 
-    if (m_editMode) {
+    if (m_editController.isEditMode()) {
         event->ignore();
         return;
     }
@@ -379,30 +341,14 @@ void StickerWidget::mouseDoubleClickEvent(QMouseEvent *event)
 void StickerWidget::wheelEvent(QWheelEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    bool editMode = m_editController.isEditMode();
+    if (m_config.clickThrough && !editMode) {
         event->ignore();
         return;
     }
 
-    if (m_editMode && (event->modifiers() & Qt::ControlModifier)) {
-        double delta = event->angleDelta().y() / 120.0;
-        m_config.transform.rotation += delta * 5.0;
-        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
-        applyMask();
-        update();
-        emit configChanged(m_config);
-        return;
-    }
-
-    if (m_editMode) {
-        double delta = event->angleDelta().y() / 120.0;
-        double factor = 1.0 + delta * 0.05;
-        m_config.transform.scaleX = qBound(0.1, m_config.transform.scaleX * factor, 5.0);
-        m_config.transform.scaleY = qBound(0.1, m_config.transform.scaleY * factor, 5.0);
-        updateTransformedWindowSize(ResizeAnchor::KeepCenter);
-        applyMask();
-        update();
-        emit configChanged(m_config);
+    if (m_interactionController.handleWheel(event, m_config, editMode)) {
+        event->accept();
         return;
     }
 
@@ -416,7 +362,7 @@ void StickerWidget::wheelEvent(QWheelEvent *event)
 void StickerWidget::enterEvent(QEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    if (m_config.clickThrough && !m_editController.isEditMode()) {
         event->ignore();
         return;
     }
@@ -435,7 +381,7 @@ void StickerWidget::enterEvent(QEvent *event)
 void StickerWidget::leaveEvent(QEvent *event)
 {
     // 如果启用了点击穿透，不处理鼠标事件
-    if (m_config.clickThrough && !m_editMode) {
+    if (m_config.clickThrough && !m_editController.isEditMode()) {
         event->ignore();
         return;
     }
@@ -454,61 +400,38 @@ void StickerWidget::leaveEvent(QEvent *event)
 void StickerWidget::contextMenuEvent(QContextMenuEvent *event)
 {
     // 如果启用了点击穿透，不显示右键菜单
-    if (m_config.clickThrough && !m_editMode) {
+    if (m_config.clickThrough && !m_editController.isEditMode()) {
         event->ignore();
         return;
     }
 
-    m_contextMenu->exec(event->globalPos());
+    m_menuController.exec(event->globalPos());
 }
 
 void StickerWidget::handleMouseTrigger(MouseTrigger trigger)
 {
-    for (const auto &event : m_config.events) {
-        if (event.trigger == trigger && event.enabled) {
-            m_eventHandler->executeEvent(event);
-        }
-    }
+    m_eventController.handleTrigger(trigger);
 }
 
 void StickerWidget::setupContextMenu()
 {
-    m_contextMenu = new QMenu(this);
-
-    m_editAction = m_contextMenu->addAction("编辑贴纸", this, &StickerWidget::onEditSticker);
-    m_editModeAction = m_contextMenu->addAction("编辑模式", this, &StickerWidget::onToggleEditMode);
-
-    m_contextMenu->addSeparator();
-
-    m_toggleModeAction = m_contextMenu->addAction("切换模式", this, &StickerWidget::onToggleMode);
-    m_toggleDragAction = m_contextMenu->addAction("允许拖动", this, &StickerWidget::onToggleDrag);
-    m_toggleClickThroughAction = m_contextMenu->addAction("点击穿透", this, &StickerWidget::onToggleClickThrough);
-
-    m_contextMenu->addSeparator();
-
-    m_deleteAction = m_contextMenu->addAction("删除贴纸", this, &StickerWidget::onDeleteSticker);
-
-    // 设置复选框状态
-    m_toggleDragAction->setCheckable(true);
-    m_toggleClickThroughAction->setCheckable(true);
-    m_editModeAction->setCheckable(true);
-
-    // 更新菜单状态
+    StickerContextMenuController::Callbacks callbacks;
+    callbacks.editSticker = [this]() { onEditSticker(); };
+    callbacks.toggleEditMode = [this]() { onToggleEditMode(); };
+    callbacks.toggleMode = [this]() { onToggleMode(); };
+    callbacks.toggleDrag = [this]() { onToggleDrag(); };
+    callbacks.toggleClickThrough = [this]() { onToggleClickThrough(); };
+    callbacks.deleteSticker = [this]() { onDeleteSticker(); };
+    m_menuController.setCallbacks(callbacks);
     updateContextMenuState();
 }
 
 void StickerWidget::updateContextMenuState()
 {
-    if (!m_contextMenu) return;
-
-    // 更新模式切换按钮文本
-    QString modeText = m_config.isDesktopMode ? "切换到置顶模式" : "切换到桌面模式";
-    m_toggleModeAction->setText(modeText);
-
-    // 更新复选框状态
-    m_toggleDragAction->setChecked(m_config.allowDrag);
-    m_toggleClickThroughAction->setChecked(m_config.clickThrough);
-    m_editModeAction->setChecked(m_editMode);
+    m_menuController.updateState(m_config.isDesktopMode,
+                                m_config.allowDrag,
+                                m_config.clickThrough,
+                                m_editController.isEditMode());
 }
 
 void StickerWidget::onAnimationTimer()
@@ -549,7 +472,7 @@ void StickerWidget::onDeleteSticker()
 void StickerWidget::onToggleMode()
 {
     m_config.isDesktopMode = !m_config.isDesktopMode;
-    updateWindowFlags();
+    m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
     updateContextMenuState();
     emit configChanged(m_config);
 
@@ -580,27 +503,19 @@ void StickerWidget::onToggleClickThrough()
 
 void StickerWidget::setEditMode(bool enabled)
 {
-    if (m_editMode == enabled) {
+    if (m_editController.isEditMode() == enabled) {
         return;
     }
 
-    m_editMode = enabled;
-    m_rotating = false;
-    updateWindowFlags();
+    m_interactionController.reset();
+    m_editController.setEditMode(enabled, m_config.isDesktopMode, m_initialized);
     updateContextMenuState();
     update();
 }
 
 void StickerWidget::onToggleEditMode()
 {
-    setEditMode(!m_editMode);
-}
-
-double StickerWidget::angleFromCenter(const QPoint &point) const
-{
-    QPointF center = rect().center();
-    QPointF delta = point - center;
-    return qAtan2(delta.y(), delta.x());
+    setEditMode(!m_editController.isEditMode());
 }
 
 StickerConfig StickerWidget::getConfig() const
@@ -616,6 +531,7 @@ void StickerWidget::updateConfig(const StickerConfig &config)
 {
     QSize oldBaseSize = m_config.size;
     m_config = config;
+    m_eventController.setEvents(&m_config.events);
 
     // 更新位置和大小
     move(config.position);
@@ -634,7 +550,7 @@ void StickerWidget::updateConfig(const StickerConfig &config)
     applyMask();
 
     // 重新应用窗口设置
-    updateWindowFlags();
+    m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
     updateClickThrough();
     setOpacity(config.opacity);
     setVisible(config.visible);
@@ -655,7 +571,7 @@ void StickerWidget::setDesktopMode(bool isDesktop)
 {
     if (m_config.isDesktopMode != isDesktop) {
         m_config.isDesktopMode = isDesktop;
-        updateWindowFlags();
+        m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
         updateContextMenuState();
         emit configChanged(m_config);
     }

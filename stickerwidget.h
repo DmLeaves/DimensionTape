@@ -4,11 +4,13 @@
 #include <QWidget>
 #include <QTimer>
 #include <QPoint>
-#include <QMenu>
 #include <QPropertyAnimation>
 #include "StickerData.h"
-#include "EventHandler.h"
+#include "stickereventcontroller.h"
+#include "stickercontextmenucontroller.h"
+#include "stickereditcontroller.h"
 #include "stickerimage.h"
+#include "stickerinteractioncontroller.h"
 #include "stickerrenderer.h"
 
 class StickerWidget : public QWidget
@@ -69,38 +71,23 @@ private:
     void applyMask();
     void updateTransformedWindowSize(ResizeAnchor anchor = ResizeAnchor::KeepCenter);
     void setupContextMenu();
-    void updateContextMenuState();  // 添加这个函数声明
+    void updateContextMenuState();
     void handleMouseTrigger(MouseTrigger trigger);
-    void updateWindowFlags();
     void updateClickThrough(); // 新增
     void setEditMode(bool enabled);
-    double angleFromCenter(const QPoint &point) const;
 
     StickerConfig m_config;
-    EventHandler *m_eventHandler;
-
     StickerImage m_image;
     StickerRenderer m_renderer;
-    QPoint m_dragPosition;
-    bool m_dragging;
+    StickerInteractionController m_interactionController;
+    StickerEditController m_editController;
+    StickerContextMenuController m_menuController;
+    StickerEventController m_eventController;
     bool m_initialized;
     double m_animationAngle;
-    bool m_editMode;
-    bool m_rotating;
-    double m_rotateStartAngle;
-    double m_rotateStartRotation;
 
     QTimer *m_animationTimer;
     QPropertyAnimation *m_opacityAnimation;
-    QMenu *m_contextMenu;
-
-    // 右键菜单项
-    QAction *m_editAction;
-    QAction *m_toggleModeAction;
-    QAction *m_toggleDragAction;        // 新增
-    QAction *m_toggleClickThroughAction; // 新增
-    QAction *m_editModeAction;
-    QAction *m_deleteAction;
 };
 
 #endif // STICKERWIDGET_H

@@ -443,6 +443,49 @@ void StickerManager::lockStickerToWindow(const QString &stickerId, qulonglong wi
     qDebug() << "贴纸" << stickerId << "已锁定跟随窗口";
 }
 
+void StickerManager::unlockStickerTarget(const QString &stickerId)
+{
+    if (!isOnThread(this)) {
+        QMetaObject::invokeMethod(this, [this, stickerId]() {
+            unlockStickerTarget(stickerId);
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    if (stickerId.isEmpty()) {
+        return;
+    }
+
+    StickerConfig updatedConfig;
+    {
+        QMutexLocker locker(&m_mutex);
+        int index = findConfigIndex(stickerId);
+        if (index < 0) {
+            return;
+        }
+        updatedConfig = m_configs.at(index);
+        updatedConfig.follow.targetProcessName.clear();
+        m_configs[index] = updatedConfig;
+    }
+
+    StickerInstance *instance = m_runtime.createOrUpdatePrimary(updatedConfig);
+    if (instance && instance->widget) {
+        updatedConfig = instance->widget->getConfig();
+        updatedConfig.follow.targetProcessName.clear();
+        QMutexLocker locker(&m_mutex);
+        int index = findConfigIndex(stickerId);
+        if (index >= 0) {
+            m_configs[index] = updatedConfig;
+        }
+    }
+
+    m_followController.clearTarget(stickerId);
+    m_followController.updateTemplate(updatedConfig);
+    emit stickerConfigChanged(updatedConfig);
+    emit stickerConfigsUpdated(getAllConfigs());
+    qDebug() << "贴纸" << stickerId << "已取消锚定窗口";
+}
+
 void StickerManager::createDefaultSticker()
 {
     StickerConfig config;

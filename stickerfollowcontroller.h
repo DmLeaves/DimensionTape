@@ -29,6 +29,7 @@ public:
     void clear();
     bool isActive() const;
     bool lockToTargetWindow(const QString &templateId, WindowHandle handle, StickerConfig *outConfig = nullptr);
+    void clearTarget(const QString &templateId);
 
 private slots:
     void refresh();

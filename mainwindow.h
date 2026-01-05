@@ -47,6 +47,7 @@ signals:
     void editStickerWithConfig(const QString &stickerId, const StickerConfig &config); // 新增信号
     void deleteSticker(const QString &stickerId);
     void lockFollowTarget(const QString &stickerId, qulonglong windowHandle);
+    void unlockFollowTarget(const QString &stickerId);
     void exitRequested();
     void requestStickerConfigs();
 
@@ -73,6 +74,9 @@ private slots:
     void onExitClicked();
     void onRefreshWindowsClicked();
     void onLockWindowClicked();
+    void onBatchRefreshWindowsClicked();
+    void onBatchLockWindowClicked();
+    void onSuggestFollowFilterClicked();
     void onFollowModeToggled(bool enabled);
     void onFollowBatchModeToggled(bool enabled);
 
@@ -90,6 +94,11 @@ private:
     void cancelPendingEdits();
     void refreshWindowList();
     void updateFollowModeUi();
+    bool isSingleFollowLocked() const;
+    bool isBatchFollowLocked() const;
+    QString buildFollowFilterValue(const WindowInfo &info) const;
+    bool applyFollowFilterSuggestion(qulonglong handle, bool force, bool warnOnEmpty);
+    void populateWindowCombo(QComboBox *combo);
 
     void updateStickerEditor(const StickerConfig &config);
     void clearStickerEditor();
@@ -137,8 +146,12 @@ private:
     QPushButton *m_refreshWindowsBtn;
     QPushButton *m_lockWindowBtn;
     QCheckBox *m_followBatchCheckBox;
+    QComboBox *m_batchWindowComboBox;
+    QPushButton *m_batchRefreshWindowsBtn;
+    QPushButton *m_batchLockWindowBtn;
     QComboBox *m_followFilterTypeComboBox;
     QLineEdit *m_followFilterValueEdit;
+    QPushButton *m_followFilterSuggestBtn;
     QComboBox *m_followAnchorComboBox;
     QComboBox *m_followOffsetModeComboBox;
     QDoubleSpinBox *m_followOffsetXSpinBox;

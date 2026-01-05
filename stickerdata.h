@@ -95,6 +95,7 @@ struct StickerFollowConfig {
     bool batchMode;
     FollowFilterType filterType;
     QString filterValue;
+    QString targetProcessName;
     FollowAnchor anchor;
     FollowOffsetMode offsetMode;
     QPointF offset;

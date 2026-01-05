@@ -19,7 +19,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle("桌面贴纸管理器");
     setMinimumSize(800, 600);
-    resize(1200, 750);
+    resize(1200, 900);
 
     setupUI();
     setupMenuBar();
@@ -267,60 +267,81 @@ void MainWindow::setupBasicTab()
 
     // 跟随模式组
     QGroupBox *followGroup = new QGroupBox("跟随模式");
-    QGridLayout *followLayout = new QGridLayout(followGroup);
+    QVBoxLayout *followLayout = new QVBoxLayout(followGroup);
 
-    m_followModeCheckBox = new QCheckBox("启用跟随模式");
-    followLayout->addWidget(m_followModeCheckBox, 0, 0, 1, 2);
+    QGroupBox *singleFollowGroup = new QGroupBox("单个跟随");
+    QGridLayout *singleLayout = new QGridLayout(singleFollowGroup);
+    m_followModeCheckBox = new QCheckBox("启用单个跟随");
+    singleLayout->addWidget(m_followModeCheckBox, 0, 0, 1, 2);
 
-    followLayout->addWidget(new QLabel("目标窗口:"), 1, 0);
+    singleLayout->addWidget(new QLabel("目标窗口:"), 1, 0);
     m_followWindowComboBox = new QComboBox;
     m_refreshWindowsBtn = new QPushButton("刷新");
     m_lockWindowBtn = new QPushButton("锚定窗口");
-    followLayout->addWidget(m_followWindowComboBox, 1, 1, 1, 2);
-    followLayout->addWidget(m_refreshWindowsBtn, 1, 3);
-    followLayout->addWidget(m_lockWindowBtn, 1, 4);
+    singleLayout->addWidget(m_followWindowComboBox, 1, 1, 1, 2);
+    singleLayout->addWidget(m_refreshWindowsBtn, 1, 3);
+    singleLayout->addWidget(m_lockWindowBtn, 1, 4);
+    followLayout->addWidget(singleFollowGroup);
 
-    m_followBatchCheckBox = new QCheckBox("批量跟随");
-    followLayout->addWidget(m_followBatchCheckBox, 2, 0);
+    QGroupBox *batchFollowGroup = new QGroupBox("批量跟随");
+    QGridLayout *batchLayout = new QGridLayout(batchFollowGroup);
+    m_followBatchCheckBox = new QCheckBox("启用批量跟随");
+    batchLayout->addWidget(m_followBatchCheckBox, 0, 0, 1, 2);
 
-    followLayout->addWidget(new QLabel("过滤类型:"), 3, 0);
+    batchLayout->addWidget(new QLabel("目标窗口:"), 1, 0);
+    m_batchWindowComboBox = new QComboBox;
+    m_batchRefreshWindowsBtn = new QPushButton("刷新");
+    m_batchLockWindowBtn = new QPushButton("锚定窗口");
+    batchLayout->addWidget(m_batchWindowComboBox, 1, 1, 1, 2);
+    batchLayout->addWidget(m_batchRefreshWindowsBtn, 1, 3);
+    batchLayout->addWidget(m_batchLockWindowBtn, 1, 4);
+
+    batchLayout->addWidget(new QLabel("过滤类型:"), 2, 0);
     m_followFilterTypeComboBox = new QComboBox;
     m_followFilterTypeComboBox->addItems({"窗口类名", "进程名", "窗口标题(正则)"});
-    followLayout->addWidget(m_followFilterTypeComboBox, 3, 1);
+    batchLayout->addWidget(m_followFilterTypeComboBox, 2, 1);
 
-    followLayout->addWidget(new QLabel("过滤值:"), 3, 2);
+    batchLayout->addWidget(new QLabel("过滤值:"), 2, 2);
     m_followFilterValueEdit = new QLineEdit;
-    followLayout->addWidget(m_followFilterValueEdit, 3, 3, 1, 2);
+    m_followFilterSuggestBtn = new QPushButton("生成模板");
+    m_followFilterSuggestBtn->setToolTip("从目标窗口生成过滤值");
+    batchLayout->addWidget(m_followFilterValueEdit, 2, 3);
+    batchLayout->addWidget(m_followFilterSuggestBtn, 2, 4);
+    followLayout->addWidget(batchFollowGroup);
 
-    followLayout->addWidget(new QLabel("锚点:"), 4, 0);
+    QGroupBox *followSettingsGroup = new QGroupBox("跟随参数");
+    QGridLayout *followSettingsLayout = new QGridLayout(followSettingsGroup);
+
+    followSettingsLayout->addWidget(new QLabel("锚点:"), 0, 0);
     m_followAnchorComboBox = new QComboBox;
     m_followAnchorComboBox->addItems({"左上", "左下", "右上", "右下"});
-    followLayout->addWidget(m_followAnchorComboBox, 4, 1);
+    followSettingsLayout->addWidget(m_followAnchorComboBox, 0, 1);
 
-    followLayout->addWidget(new QLabel("偏移模式:"), 4, 2);
+    followSettingsLayout->addWidget(new QLabel("偏移模式:"), 0, 2);
     m_followOffsetModeComboBox = new QComboBox;
     m_followOffsetModeComboBox->addItems({"像素", "比例"});
-    followLayout->addWidget(m_followOffsetModeComboBox, 4, 3);
+    followSettingsLayout->addWidget(m_followOffsetModeComboBox, 0, 3);
 
-    followLayout->addWidget(new QLabel("偏移X:"), 5, 0);
+    followSettingsLayout->addWidget(new QLabel("偏移X:"), 1, 0);
     m_followOffsetXSpinBox = new QDoubleSpinBox;
     m_followOffsetXSpinBox->setRange(-99999.0, 99999.0);
     m_followOffsetXSpinBox->setDecimals(2);
-    followLayout->addWidget(m_followOffsetXSpinBox, 5, 1);
+    followSettingsLayout->addWidget(m_followOffsetXSpinBox, 1, 1);
 
-    followLayout->addWidget(new QLabel("偏移Y:"), 5, 2);
+    followSettingsLayout->addWidget(new QLabel("偏移Y:"), 1, 2);
     m_followOffsetYSpinBox = new QDoubleSpinBox;
     m_followOffsetYSpinBox->setRange(-99999.0, 99999.0);
     m_followOffsetYSpinBox->setDecimals(2);
-    followLayout->addWidget(m_followOffsetYSpinBox, 5, 3);
+    followSettingsLayout->addWidget(m_followOffsetYSpinBox, 1, 3);
 
-    followLayout->addWidget(new QLabel("刷新间隔(ms):"), 6, 0);
+    followSettingsLayout->addWidget(new QLabel("刷新间隔(ms):"), 2, 0);
     m_followPollIntervalSpinBox = new QSpinBox;
     m_followPollIntervalSpinBox->setRange(16, 5000);
-    followLayout->addWidget(m_followPollIntervalSpinBox, 6, 1);
+    followSettingsLayout->addWidget(m_followPollIntervalSpinBox, 2, 1);
 
     m_followHideMinimizedCheckBox = new QCheckBox("最小化时隐藏");
-    followLayout->addWidget(m_followHideMinimizedCheckBox, 6, 2, 1, 2);
+    followSettingsLayout->addWidget(m_followHideMinimizedCheckBox, 2, 2, 1, 2);
+    followLayout->addWidget(followSettingsGroup);
 
     layout->addWidget(followGroup);
 
@@ -363,6 +384,12 @@ void MainWindow::connectEditorSignals()
     connect(m_followHideMinimizedCheckBox, &QCheckBox::toggled, this, &MainWindow::onEditorValueChanged);
     connect(m_refreshWindowsBtn, &QPushButton::clicked, this, &MainWindow::onRefreshWindowsClicked);
     connect(m_lockWindowBtn, &QPushButton::clicked, this, &MainWindow::onLockWindowClicked);
+    connect(m_batchRefreshWindowsBtn, &QPushButton::clicked,
+            this, &MainWindow::onBatchRefreshWindowsClicked);
+    connect(m_batchLockWindowBtn, &QPushButton::clicked,
+            this, &MainWindow::onBatchLockWindowClicked);
+    connect(m_followFilterSuggestBtn, &QPushButton::clicked,
+            this, &MainWindow::onSuggestFollowFilterClicked);
 }
 
 void MainWindow::setupEventEditor()
@@ -748,6 +775,14 @@ void MainWindow::onLockWindowClicked()
         return;
     }
 
+    if (isSingleFollowLocked()) {
+        m_currentConfig.follow.targetProcessName.clear();
+        updateFollowModeUi();
+        emit unlockFollowTarget(m_currentStickerId);
+        statusBar()->showMessage("已取消锚定", 2000);
+        return;
+    }
+
     qulonglong handle = m_followWindowComboBox->currentData().toULongLong();
     if (handle == 0) {
         QMessageBox::warning(this, "警告", "请选择要锚定的窗口");
@@ -755,33 +790,6 @@ void MainWindow::onLockWindowClicked()
     }
 
     bool followEnabled = m_followModeCheckBox->isChecked();
-    bool batchEnabled = m_followBatchCheckBox->isChecked();
-    QString filterValue = m_followFilterValueEdit->text().trimmed();
-
-    if (batchEnabled && filterValue.isEmpty()) {
-        WindowInfo info = m_windowService.queryWindow(static_cast<WindowHandle>(handle));
-        QString value;
-        int typeIndex = m_followFilterTypeComboBox->currentIndex();
-        if (typeIndex == static_cast<int>(FollowFilterType::WindowClass)) {
-            value = info.className;
-        } else if (typeIndex == static_cast<int>(FollowFilterType::ProcessName)) {
-            value = info.processName;
-        } else {
-            value = QRegularExpression::escape(info.title);
-        }
-
-        if (value.isEmpty()) {
-            QMessageBox::warning(this, "警告", "无法从目标窗口提取过滤条件");
-            return;
-        }
-
-        {
-            QSignalBlocker blocker(m_followFilterValueEdit);
-            m_followFilterValueEdit->setText(value);
-        }
-        applyPreviewIfEditing();
-    }
-
     if (!followEnabled) {
         QSignalBlocker blocker(m_followModeCheckBox);
         m_followModeCheckBox->setChecked(true);
@@ -789,19 +797,88 @@ void MainWindow::onLockWindowClicked()
         onEditorValueChanged();
     }
 
-    if (batchEnabled && m_followFilterValueEdit->text().trimmed().isEmpty()) {
-        QMessageBox::warning(this, "警告", "批量跟随需要填写过滤值");
-        return;
+    WindowInfo info = m_windowService.queryWindow(static_cast<WindowHandle>(handle));
+    if (!info.processName.isEmpty()) {
+        m_currentConfig.follow.targetProcessName = info.processName;
+        updateFollowModeUi();
     }
 
     emit lockFollowTarget(m_currentStickerId, handle);
     statusBar()->showMessage("目标窗口已锚定", 2000);
 }
 
+void MainWindow::onBatchRefreshWindowsClicked()
+{
+    refreshWindowList();
+}
+
+void MainWindow::onBatchLockWindowClicked()
+{
+    if (m_currentStickerId.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请先选择一个贴纸");
+        return;
+    }
+
+    if (isBatchFollowLocked()) {
+        m_currentConfig.follow.targetProcessName.clear();
+        updateFollowModeUi();
+        emit unlockFollowTarget(m_currentStickerId);
+        statusBar()->showMessage("已取消锚定", 2000);
+        return;
+    }
+
+    qulonglong handle = m_batchWindowComboBox->currentData().toULongLong();
+    if (handle == 0) {
+        QMessageBox::warning(this, "警告", "请选择要锚定的窗口");
+        return;
+    }
+
+    bool batchEnabled = m_followBatchCheckBox->isChecked();
+    if (!batchEnabled) {
+        QSignalBlocker blocker(m_followBatchCheckBox);
+        m_followBatchCheckBox->setChecked(true);
+        updateFollowModeUi();
+        onEditorValueChanged();
+    }
+
+    if (m_followFilterValueEdit->text().trimmed().isEmpty()) {
+        if (!applyFollowFilterSuggestion(handle, true, true)) {
+            return;
+        }
+    }
+
+    WindowInfo info = m_windowService.queryWindow(static_cast<WindowHandle>(handle));
+    if (!info.processName.isEmpty()) {
+        m_currentConfig.follow.targetProcessName = info.processName;
+        updateFollowModeUi();
+    }
+
+    emit lockFollowTarget(m_currentStickerId, handle);
+    statusBar()->showMessage("目标窗口已锚定", 2000);
+}
+
+void MainWindow::onSuggestFollowFilterClicked()
+{
+    if (m_batchWindowComboBox->count() == 0) {
+        refreshWindowList();
+    }
+
+    qulonglong handle = m_batchWindowComboBox->currentData().toULongLong();
+    if (!applyFollowFilterSuggestion(handle, true, true)) {
+        return;
+    }
+    statusBar()->showMessage("过滤值模板已生成", 2000);
+}
+
 void MainWindow::onFollowModeToggled(bool enabled)
 {
     if (m_updatingEditor) {
         return;
+    }
+
+    if (enabled) {
+        QSignalBlocker blocker(m_followBatchCheckBox);
+        m_followBatchCheckBox->setChecked(false);
     }
 
     if (enabled) {
@@ -824,6 +901,20 @@ void MainWindow::onFollowBatchModeToggled(bool)
 {
     if (m_updatingEditor) {
         return;
+    }
+    bool enabled = m_followBatchCheckBox->isChecked();
+    if (enabled) {
+        QSignalBlocker blocker(m_followModeCheckBox);
+        m_followModeCheckBox->setChecked(false);
+        if (m_batchWindowComboBox->count() == 0) {
+            refreshWindowList();
+        }
+        if (!m_currentConfig.follow.enabled && m_followPollIntervalSpinBox->value() == 100) {
+            QSignalBlocker blockerInterval(m_followPollIntervalSpinBox);
+            m_followPollIntervalSpinBox->setValue(16);
+        }
+        QSignalBlocker blockerDesktop(m_desktopModeCheckBox);
+        m_desktopModeCheckBox->setChecked(false);
     }
     updateFollowModeUi();
     onEditorValueChanged();
@@ -921,8 +1012,8 @@ void MainWindow::updateStickerEditor(const StickerConfig &config)
     m_desktopModeCheckBox->setChecked(config.isDesktopMode);
     m_allowDragCheckBox->setChecked(config.allowDrag);        // 新增
     m_clickThroughCheckBox->setChecked(config.clickThrough);  // 新增
-    m_followModeCheckBox->setChecked(config.follow.enabled);
-    m_followBatchCheckBox->setChecked(config.follow.batchMode);
+    m_followModeCheckBox->setChecked(config.follow.enabled && !config.follow.batchMode);
+    m_followBatchCheckBox->setChecked(config.follow.enabled && config.follow.batchMode);
     m_followFilterTypeComboBox->setCurrentIndex(static_cast<int>(config.follow.filterType));
     m_followFilterValueEdit->setText(config.follow.filterValue);
     m_followAnchorComboBox->setCurrentIndex(static_cast<int>(config.follow.anchor));
@@ -993,10 +1084,13 @@ StickerConfig MainWindow::getStickerConfigFromEditor() const
     config.isDesktopMode = m_desktopModeCheckBox->isChecked();
     config.allowDrag = m_allowDragCheckBox->isChecked();        // 新增
     config.clickThrough = m_clickThroughCheckBox->isChecked();  // 新增
-    config.follow.enabled = m_followModeCheckBox->isChecked();
-    config.follow.batchMode = m_followBatchCheckBox->isChecked();
+    bool singleEnabled = m_followModeCheckBox->isChecked();
+    bool batchEnabled = m_followBatchCheckBox->isChecked();
+    config.follow.enabled = singleEnabled || batchEnabled;
+    config.follow.batchMode = batchEnabled;
     config.follow.filterType = static_cast<FollowFilterType>(m_followFilterTypeComboBox->currentIndex());
     config.follow.filterValue = m_followFilterValueEdit->text().trimmed();
+    config.follow.targetProcessName = m_currentConfig.follow.targetProcessName;
     config.follow.anchor = static_cast<FollowAnchor>(m_followAnchorComboBox->currentIndex());
     config.follow.offsetMode = static_cast<FollowOffsetMode>(m_followOffsetModeComboBox->currentIndex());
     config.follow.offset = QPointF(m_followOffsetXSpinBox->value(), m_followOffsetYSpinBox->value());
@@ -1012,27 +1106,50 @@ StickerConfig MainWindow::getStickerConfigFromEditor() const
 
 void MainWindow::refreshWindowList()
 {
-    m_followWindowComboBox->clear();
-    QList<WindowInfo> windows = m_windowService.listWindows(true);
-    if (windows.isEmpty()) {
-        m_followWindowComboBox->addItem("没有可用窗口", QVariant::fromValue<qulonglong>(0));
+    populateWindowCombo(m_followWindowComboBox);
+    populateWindowCombo(m_batchWindowComboBox);
+}
+
+void MainWindow::populateWindowCombo(QComboBox *combo)
+{
+    if (!combo) {
         return;
     }
 
+    qulonglong currentHandle = combo->currentData().toULongLong();
+    combo->clear();
+
+    QList<WindowInfo> windows = m_windowService.listWindows(true);
+    if (windows.isEmpty()) {
+        combo->addItem("没有可用窗口", QVariant::fromValue<qulonglong>(0));
+        return;
+    }
+
+    int selectedIndex = -1;
     for (const WindowInfo &info : windows) {
         QString title = info.title.trimmed();
         if (title.isEmpty()) {
             title = info.processName;
         }
         QString label = QString("%1 (%2)").arg(title, info.processName);
-        m_followWindowComboBox->addItem(label, QVariant::fromValue<qulonglong>(info.handle));
+        combo->addItem(label, QVariant::fromValue<qulonglong>(info.handle));
+        if (currentHandle != 0 && info.handle == currentHandle) {
+            selectedIndex = combo->count() - 1;
+        }
+    }
+
+    if (selectedIndex >= 0) {
+        combo->setCurrentIndex(selectedIndex);
     }
 }
 
 void MainWindow::updateFollowModeUi()
 {
-    bool followEnabled = m_followModeCheckBox->isChecked();
-    bool batchEnabled = followEnabled && m_followBatchCheckBox->isChecked();
+    bool singleEnabled = m_followModeCheckBox->isChecked();
+    bool batchEnabled = m_followBatchCheckBox->isChecked();
+    bool followEnabled = singleEnabled || batchEnabled;
+    bool singleLocked = isSingleFollowLocked();
+    bool batchLocked = isBatchFollowLocked();
 
     if (followEnabled) {
         QSignalBlocker blocker(m_desktopModeCheckBox);
@@ -1040,18 +1157,93 @@ void MainWindow::updateFollowModeUi()
     }
 
     m_desktopModeCheckBox->setEnabled(!followEnabled);
-    m_followWindowComboBox->setEnabled(followEnabled);
-    m_refreshWindowsBtn->setEnabled(followEnabled);
-    m_lockWindowBtn->setEnabled(followEnabled);
-    m_followBatchCheckBox->setEnabled(followEnabled);
+    m_followModeCheckBox->setEnabled(!batchEnabled || singleEnabled);
+    m_followBatchCheckBox->setEnabled(!singleEnabled || batchEnabled);
+    m_followWindowComboBox->setEnabled(singleEnabled);
+    m_refreshWindowsBtn->setEnabled(singleEnabled);
+    m_lockWindowBtn->setEnabled(singleEnabled);
+    if (m_lockWindowBtn) {
+        m_lockWindowBtn->setText(singleLocked ? "取消锚定" : "锚定窗口");
+    }
+    m_batchWindowComboBox->setEnabled(batchEnabled);
+    m_batchRefreshWindowsBtn->setEnabled(batchEnabled);
+    m_batchLockWindowBtn->setEnabled(batchEnabled);
+    if (m_batchLockWindowBtn) {
+        m_batchLockWindowBtn->setText(batchLocked ? "取消锚定" : "锚定窗口");
+    }
     m_followFilterTypeComboBox->setEnabled(batchEnabled);
     m_followFilterValueEdit->setEnabled(batchEnabled);
+    m_followFilterSuggestBtn->setEnabled(batchEnabled);
     m_followAnchorComboBox->setEnabled(followEnabled);
     m_followOffsetModeComboBox->setEnabled(followEnabled);
     m_followOffsetXSpinBox->setEnabled(followEnabled);
     m_followOffsetYSpinBox->setEnabled(followEnabled);
     m_followPollIntervalSpinBox->setEnabled(followEnabled);
     m_followHideMinimizedCheckBox->setEnabled(followEnabled);
+}
+
+bool MainWindow::isSingleFollowLocked() const
+{
+    if (!m_followModeCheckBox) {
+        return false;
+    }
+    if (!m_followModeCheckBox->isChecked()) {
+        return false;
+    }
+    return !m_currentConfig.follow.targetProcessName.trimmed().isEmpty();
+}
+
+bool MainWindow::isBatchFollowLocked() const
+{
+    if (!m_followBatchCheckBox) {
+        return false;
+    }
+    if (!m_followBatchCheckBox->isChecked()) {
+        return false;
+    }
+    return !m_currentConfig.follow.targetProcessName.trimmed().isEmpty();
+}
+
+QString MainWindow::buildFollowFilterValue(const WindowInfo &info) const
+{
+    int typeIndex = m_followFilterTypeComboBox->currentIndex();
+    if (typeIndex == static_cast<int>(FollowFilterType::WindowClass)) {
+        return info.className.trimmed();
+    }
+    if (typeIndex == static_cast<int>(FollowFilterType::ProcessName)) {
+        return info.processName.trimmed();
+    }
+    return QRegularExpression::escape(info.title.trimmed());
+}
+
+bool MainWindow::applyFollowFilterSuggestion(qulonglong handle, bool force, bool warnOnEmpty)
+{
+    if (handle == 0) {
+        if (warnOnEmpty) {
+            QMessageBox::warning(this, "警告", "请选择要参考的窗口");
+        }
+        return false;
+    }
+
+    if (!force && !m_followFilterValueEdit->text().trimmed().isEmpty()) {
+        return false;
+    }
+
+    WindowInfo info = m_windowService.queryWindow(static_cast<WindowHandle>(handle));
+    QString value = buildFollowFilterValue(info);
+    if (value.isEmpty()) {
+        if (warnOnEmpty) {
+            QMessageBox::warning(this, "警告", "无法从目标窗口提取过滤条件");
+        }
+        return false;
+    }
+
+    {
+        QSignalBlocker blocker(m_followFilterValueEdit);
+        m_followFilterValueEdit->setText(value);
+    }
+    applyPreviewIfEditing();
+    return true;
 }
 
 void MainWindow::updateEventTable()

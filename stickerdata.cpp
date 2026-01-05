@@ -106,6 +106,7 @@ QJsonObject StickerFollowConfig::toJson() const
     obj["batchMode"] = batchMode;
     obj["filterType"] = static_cast<int>(filterType);
     obj["filterValue"] = filterValue;
+    obj["targetProcessName"] = targetProcessName;
     obj["anchor"] = static_cast<int>(anchor);
     obj["offsetMode"] = static_cast<int>(offsetMode);
     obj["offset"] = QJsonArray{offset.x(), offset.y()};
@@ -121,6 +122,7 @@ void StickerFollowConfig::fromJson(const QJsonObject &json)
     filterType = static_cast<FollowFilterType>(
         json["filterType"].toInt(static_cast<int>(FollowFilterType::WindowClass)));
     filterValue = json["filterValue"].toString();
+    targetProcessName = json["targetProcessName"].toString();
     anchor = static_cast<FollowAnchor>(
         json["anchor"].toInt(static_cast<int>(FollowAnchor::LeftTop)));
     offsetMode = static_cast<FollowOffsetMode>(

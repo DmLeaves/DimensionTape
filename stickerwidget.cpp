@@ -13,6 +13,76 @@
 #include <QtMath>
 #include "stickertransformlayout.h"
 
+namespace {
+bool fuzzyEqual(double a, double b)
+{
+    return qFuzzyCompare(a + 1.0, b + 1.0);
+}
+
+bool transformEqual(const StickerTransform &a, const StickerTransform &b)
+{
+    return fuzzyEqual(a.scaleX, b.scaleX)
+        && fuzzyEqual(a.scaleY, b.scaleY)
+        && fuzzyEqual(a.rotation, b.rotation)
+        && fuzzyEqual(a.shearX, b.shearX)
+        && fuzzyEqual(a.shearY, b.shearY);
+}
+
+bool followEqual(const StickerFollowConfig &a, const StickerFollowConfig &b)
+{
+    return a.enabled == b.enabled
+        && a.batchMode == b.batchMode
+        && a.filterType == b.filterType
+        && a.filterValue == b.filterValue
+        && a.targetProcessName == b.targetProcessName
+        && a.anchor == b.anchor
+        && a.offsetMode == b.offsetMode
+        && fuzzyEqual(a.offset.x(), b.offset.x())
+        && fuzzyEqual(a.offset.y(), b.offset.y())
+        && a.pollIntervalMs == b.pollIntervalMs
+        && a.hideWhenMinimized == b.hideWhenMinimized;
+}
+
+bool eventEqual(const StickerEvent &a, const StickerEvent &b)
+{
+    return a.type == b.type
+        && a.trigger == b.trigger
+        && a.target == b.target
+        && a.parameters == b.parameters
+        && a.enabled == b.enabled;
+}
+
+bool eventsEqual(const QList<StickerEvent> &a, const QList<StickerEvent> &b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (int i = 0; i < a.size(); ++i) {
+        if (!eventEqual(a.at(i), b.at(i))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool configEqual(const StickerConfig &a, const StickerConfig &b)
+{
+    return a.id == b.id
+        && a.name == b.name
+        && a.imagePath == b.imagePath
+        && a.position == b.position
+        && a.size == b.size
+        && a.isDesktopMode == b.isDesktopMode
+        && a.visible == b.visible
+        && fuzzyEqual(a.opacity, b.opacity)
+        && a.allowDrag == b.allowDrag
+        && a.clickThrough == b.clickThrough
+        && transformEqual(a.transform, b.transform)
+        && followEqual(a.follow, b.follow)
+        && eventsEqual(a.events, b.events);
+}
+}
+
 StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     : QWidget(parent)
     , m_config(config)
@@ -537,21 +607,34 @@ StickerConfig StickerWidget::getConfig() const
 
 void StickerWidget::updateConfig(const StickerConfig &config)
 {
+    if (configEqual(m_config, config)) {
+        return;
+    }
+
+    const StickerConfig oldConfig = m_config;
     QSize oldBaseSize = m_config.size;
     m_config = config;
     m_eventController.setEvents(&m_config.events);
 
     // 更新位置和大小
-    move(config.position);
+    if (config.position != oldConfig.position) {
+        move(config.position);
+    }
     if (config.size != oldBaseSize) {
         setFixedSize(m_config.size);
     }
 
     // 更新图像
-    if (!config.imagePath.isEmpty() && QFileInfo::exists(config.imagePath)) {
-        loadStickerImage(config.imagePath);
-    } else {
-        createDefaultSticker();
+    if (config.imagePath.isEmpty()) {
+        if (oldConfig.imagePath != config.imagePath || m_image.isNull()) {
+            createDefaultSticker();
+        }
+    } else if (oldConfig.imagePath != config.imagePath || m_image.isNull()) {
+        if (QFileInfo::exists(config.imagePath)) {
+            loadStickerImage(config.imagePath);
+        } else {
+            createDefaultSticker();
+        }
     }
 
     updateTransformedWindowSize(ResizeAnchor::KeepTopLeft);
@@ -559,8 +642,12 @@ void StickerWidget::updateConfig(const StickerConfig &config)
 
     // 重新应用窗口设置
     m_editController.applyWindowFlags(m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
-    updateClickThrough();
-    setOpacity(config.opacity);
+    if (config.clickThrough != oldConfig.clickThrough) {
+        updateClickThrough();
+    }
+    if (!fuzzyEqual(config.opacity, oldConfig.opacity)) {
+        setOpacity(config.opacity);
+    }
     setVisible(config.visible);
 
     // 更新右键菜单状态
@@ -606,13 +693,15 @@ void StickerWidget::setClickThrough(bool clickThrough)
 
 void StickerWidget::setVisible(bool visible)
 {
+    bool visibilityChanged = (m_config.visible != visible);
     m_config.visible = visible;
-    if (m_runtimeHidden) {
-        QWidget::setVisible(false);
-    } else {
-        QWidget::setVisible(visible);
+    bool targetVisible = m_runtimeHidden ? false : visible;
+    if (QWidget::isVisible() != targetVisible) {
+        QWidget::setVisible(targetVisible);
     }
-    emit configChanged(m_config);
+    if (visibilityChanged) {
+        emit configChanged(m_config);
+    }
 }
 
 void StickerWidget::setRuntimeHidden(bool hidden)

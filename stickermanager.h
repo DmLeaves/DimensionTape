@@ -47,6 +47,7 @@ public slots:
     void onInstanceEditRequested(const QString &instanceId, const QString &templateId);
     void onConfigsRequested();
     void lockStickerToWindow(const QString &stickerId, qulonglong windowHandle);
+    void unlockStickerTarget(const QString &stickerId);
 
 signals:
     void stickerCreated(const StickerConfig &config);

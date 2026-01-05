@@ -5,6 +5,19 @@
 #include <QRegularExpression>
 #include <QtMath>
 
+namespace {
+bool isBatchAnchored(const StickerFollowConfig &follow, WindowHandle primaryHandle)
+{
+    if (!follow.batchMode) {
+        return false;
+    }
+    if (primaryHandle != 0) {
+        return true;
+    }
+    return !follow.targetProcessName.trimmed().isEmpty();
+}
+}
+
 StickerFollowController::StickerFollowController(StickerRuntime *runtime, QObject *parent)
     : QObject(parent)
     , m_runtime(runtime)
@@ -127,6 +140,10 @@ bool StickerFollowController::lockToTargetWindow(const QString &templateId,
                                                               state.config.follow);
     }
 
+    if (!info.processName.isEmpty()) {
+        state.config.follow.targetProcessName = info.processName;
+    }
+
     state.primaryHandle = handle;
     updateTemplateVisibility(state.config);
     if (outConfig) {
@@ -138,6 +155,20 @@ bool StickerFollowController::lockToTargetWindow(const QString &templateId,
         refresh();
     }
     return true;
+}
+
+void StickerFollowController::clearTarget(const QString &templateId)
+{
+    auto it = m_templates.find(templateId);
+    if (it == m_templates.end()) {
+        return;
+    }
+
+    it.value().config.follow.targetProcessName.clear();
+    it.value().primaryHandle = 0;
+    removeAllInstances(it.value());
+    updateTemplateVisibility(it.value().config);
+    syncTimer();
 }
 
 void StickerFollowController::refresh()
@@ -155,7 +186,11 @@ void StickerFollowController::refresh()
         if (!follow.enabled) {
             continue;
         }
-        if (follow.batchMode || it.value().primaryHandle == 0) {
+        if (isBatchAnchored(follow, it.value().primaryHandle)) {
+            needEnumeration = true;
+            break;
+        }
+        if (it.value().primaryHandle == 0 && !follow.targetProcessName.trimmed().isEmpty()) {
             needEnumeration = true;
             break;
         }
@@ -206,6 +241,14 @@ int StickerFollowController::effectiveIntervalMs() const
     for (auto it = m_templates.constBegin(); it != m_templates.constEnd(); ++it) {
         const StickerFollowConfig &follow = it.value().config.follow;
         if (!follow.enabled) {
+            continue;
+        }
+        if (follow.batchMode && !isBatchAnchored(follow, it.value().primaryHandle)) {
+            continue;
+        }
+        if (!follow.batchMode
+            && it.value().primaryHandle == 0
+            && follow.targetProcessName.trimmed().isEmpty()) {
             continue;
         }
         int candidate = qMax(16, follow.pollIntervalMs);
@@ -366,6 +409,11 @@ void StickerFollowController::updateInstancesForTemplate(TemplateState &state,
                                                          const QList<WindowInfo> &windows)
 {
     const StickerFollowConfig &follow = state.config.follow;
+    if (follow.batchMode && !isBatchAnchored(follow, state.primaryHandle)) {
+        removeAllInstances(state);
+        state.primaryHandle = 0;
+        return;
+    }
     QList<WindowInfo> matched;
     if (!follow.batchMode && state.primaryHandle != 0) {
         for (const WindowInfo &info : windows) {
@@ -376,7 +424,19 @@ void StickerFollowController::updateInstancesForTemplate(TemplateState &state,
         }
     }
     if (matched.isEmpty()) {
-        matched = filterWindows(follow, windows);
+        if (!follow.batchMode && state.primaryHandle == 0
+            && !follow.targetProcessName.trimmed().isEmpty()) {
+            for (const WindowInfo &info : windows) {
+                if (info.processName.compare(follow.targetProcessName, Qt::CaseInsensitive) == 0) {
+                    matched.append(info);
+                    state.primaryHandle = info.handle;
+                    updateTemplateVisibility(state.config);
+                    break;
+                }
+            }
+        } else if (follow.batchMode) {
+            matched = filterWindows(follow, windows);
+        }
     }
     QSet<WindowHandle> aliveHandles;
 
@@ -475,7 +535,7 @@ void StickerFollowController::updateTemplateVisibility(const StickerConfig &conf
 
     bool hideTemplate = false;
     if (config.follow.enabled) {
-        if (config.follow.batchMode) {
+        if (isBatchAnchored(config.follow, state ? state->primaryHandle : 0)) {
             hideTemplate = true;
         } else if (state && state->primaryHandle != 0) {
             hideTemplate = true;

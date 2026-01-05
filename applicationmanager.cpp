@@ -38,6 +38,8 @@ void ApplicationManager::initialize()
             m_stickerManager, static_cast<bool(StickerManager::*)()>(&StickerManager::saveConfig));
     connect(m_mainWindow, &MainWindow::lockFollowTarget,
             m_stickerManager, &StickerManager::lockStickerToWindow);
+    connect(m_mainWindow, &MainWindow::unlockFollowTarget,
+            m_stickerManager, &StickerManager::unlockStickerTarget);
 
 
     // 贴纸管理器到主窗口的连接

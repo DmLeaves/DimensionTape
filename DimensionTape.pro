@@ -11,6 +11,7 @@ SOURCES += \
     stickercontextmenucontroller.cpp \
     stickereventcontroller.cpp \
     stickereditcontroller.cpp \
+    stickerfollowcontroller.cpp \
     stickerimage.cpp \
     stickerinteractioncontroller.cpp \
     stickerrepository.cpp \
@@ -19,7 +20,9 @@ SOURCES += \
     stickermanager.cpp \
     stickertransformlayout.cpp \
     stickerwidget.cpp \
-    trayicon.cpp
+    trayicon.cpp \
+    windowattachmentservice.cpp \
+    windowrecognitionservice.cpp
 
 HEADERS += \
     applicationmanager.h \
@@ -29,7 +32,9 @@ HEADERS += \
     stickercontextmenucontroller.h \
     stickereventcontroller.h \
     stickereditcontroller.h \
+    stickerfollowcontroller.h \
     stickerimage.h \
+    stickerinstance.h \
     stickerinteractioncontroller.h \
     stickerrepository.h \
     stickerrenderer.h \
@@ -37,7 +42,9 @@ HEADERS += \
     stickermanager.h \
     stickertransformlayout.h \
     stickerwidget.h \
-    trayicon.h
+    trayicon.h \
+    windowattachmentservice.h \
+    windowrecognitionservice.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

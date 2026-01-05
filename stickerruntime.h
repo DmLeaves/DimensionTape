@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QList>
 #include <QString>
+#include "stickerinstance.h"
 #include "StickerWidget.h"
 
 class StickerRuntime : public QObject
@@ -15,15 +16,34 @@ public:
     explicit StickerRuntime(QObject *parent = nullptr);
     ~StickerRuntime();
 
-    StickerWidget *createOrUpdate(const StickerConfig &config);
-    void destroy(const QString &stickerId);
+    StickerInstance *createOrUpdatePrimary(const StickerConfig &config);
+    StickerInstance *createOrUpdateInstance(const StickerConfig &config,
+                                            const QString &instanceId,
+                                            const QString &templateId,
+                                            bool syncToTemplate = true);
+    void destroyInstance(const QString &instanceId);
+    void destroyInstancesForTemplate(const QString &templateId);
     void clear();
-    bool hasWidget(const QString &stickerId) const;
-    StickerWidget *widget(const QString &stickerId) const;
-    QList<StickerWidget*> widgets() const;
+    StickerInstance *instance(const QString &instanceId) const;
+    StickerWidget *widget(const QString &instanceId) const;
+    QList<StickerInstance*> instances() const;
+    QList<StickerInstance*> instancesForTemplate(const QString &templateId) const;
+
+signals:
+    void instanceConfigChanged(const QString &instanceId,
+                               const StickerConfig &config,
+                               bool syncToTemplate);
+    void instanceDeleteRequested(const QString &instanceId, const QString &templateId);
+    void instanceEditRequested(const QString &instanceId, const QString &templateId);
 
 private:
-    QHash<QString, StickerWidget*> m_widgets;
+    StickerInstance *ensureInstance(const StickerConfig &config,
+                                    const QString &instanceId,
+                                    const QString &templateId,
+                                    bool syncToTemplate);
+    void connectInstanceSignals(StickerInstance *instance);
+
+    QHash<QString, StickerInstance*> m_instances;
 };
 
 #endif // STICKERRUNTIME_H

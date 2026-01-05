@@ -33,6 +33,7 @@ public:
     void setDesktopMode(bool isDesktop);
     void setAllowDrag(bool allowDrag);      // 新增
     void setClickThrough(bool clickThrough); // 新增
+    void setRuntimeHidden(bool hidden);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -84,6 +85,7 @@ private:
     StickerContextMenuController m_menuController;
     StickerEventController m_eventController;
     bool m_initialized;
+    bool m_runtimeHidden;
     double m_animationAngle;
 
     QTimer *m_animationTimer;

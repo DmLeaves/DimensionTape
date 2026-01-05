@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QTransform>
+#include <QPointF>
 
 // 前向声明
 struct StickerEvent;
@@ -70,6 +71,42 @@ struct StickerTransform {
     void fromJson(const QJsonObject &json);
 };
 
+// 跟随模式配置
+enum class FollowAnchor {
+    LeftTop = 0,
+    LeftBottom,
+    RightTop,
+    RightBottom
+};
+
+enum class FollowOffsetMode {
+    AbsolutePixels = 0,
+    RelativeRatio
+};
+
+enum class FollowFilterType {
+    WindowClass = 0,
+    ProcessName,
+    WindowTitleRegex
+};
+
+struct StickerFollowConfig {
+    bool enabled;
+    bool batchMode;
+    FollowFilterType filterType;
+    QString filterValue;
+    FollowAnchor anchor;
+    FollowOffsetMode offsetMode;
+    QPointF offset;
+    int pollIntervalMs;
+    bool hideWhenMinimized;
+
+    StickerFollowConfig();
+
+    QJsonObject toJson() const;
+    void fromJson(const QJsonObject &json);
+};
+
 // 贴纸配置数据
 struct StickerConfig {
     QString id;              // 唯一标识
@@ -83,6 +120,7 @@ struct StickerConfig {
     bool allowDrag;          // 允许拖动
     bool clickThrough;       // 点击穿透
     StickerTransform transform; // 变换参数
+    StickerFollowConfig follow; // 跟随配置
     QList<StickerEvent> events; // 事件列表
 
     // 构造函数

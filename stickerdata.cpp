@@ -87,6 +87,54 @@ void StickerEvent::fromJson(const QJsonObject &json)
     enabled = json["enabled"].toBool(true);
 }
 
+StickerFollowConfig::StickerFollowConfig()
+    : enabled(false)
+    , batchMode(false)
+    , filterType(FollowFilterType::WindowClass)
+    , anchor(FollowAnchor::LeftTop)
+    , offsetMode(FollowOffsetMode::AbsolutePixels)
+    , offset(0.0, 0.0)
+    , pollIntervalMs(16)
+    , hideWhenMinimized(true)
+{
+}
+
+QJsonObject StickerFollowConfig::toJson() const
+{
+    QJsonObject obj;
+    obj["enabled"] = enabled;
+    obj["batchMode"] = batchMode;
+    obj["filterType"] = static_cast<int>(filterType);
+    obj["filterValue"] = filterValue;
+    obj["anchor"] = static_cast<int>(anchor);
+    obj["offsetMode"] = static_cast<int>(offsetMode);
+    obj["offset"] = QJsonArray{offset.x(), offset.y()};
+    obj["pollIntervalMs"] = pollIntervalMs;
+    obj["hideWhenMinimized"] = hideWhenMinimized;
+    return obj;
+}
+
+void StickerFollowConfig::fromJson(const QJsonObject &json)
+{
+    enabled = json["enabled"].toBool(false);
+    batchMode = json["batchMode"].toBool(false);
+    filterType = static_cast<FollowFilterType>(
+        json["filterType"].toInt(static_cast<int>(FollowFilterType::WindowClass)));
+    filterValue = json["filterValue"].toString();
+    anchor = static_cast<FollowAnchor>(
+        json["anchor"].toInt(static_cast<int>(FollowAnchor::LeftTop)));
+    offsetMode = static_cast<FollowOffsetMode>(
+        json["offsetMode"].toInt(static_cast<int>(FollowOffsetMode::AbsolutePixels)));
+
+    QJsonArray offsetArray = json["offset"].toArray();
+    if (offsetArray.size() >= 2) {
+        offset = QPointF(offsetArray[0].toDouble(), offsetArray[1].toDouble());
+    }
+
+    pollIntervalMs = json["pollIntervalMs"].toInt(16);
+    hideWhenMinimized = json["hideWhenMinimized"].toBool(true);
+}
+
 QJsonObject StickerConfig::toJson() const
 {
     QJsonObject obj;
@@ -101,6 +149,7 @@ QJsonObject StickerConfig::toJson() const
     obj["allowDrag"] = allowDrag;       // 新增
     obj["clickThrough"] = clickThrough; // 新增
     obj["transform"] = transform.toJson();
+    obj["follow"] = follow.toJson();
 
     QJsonArray eventsArray;
     for (const StickerEvent &event : events) {
@@ -146,6 +195,12 @@ void StickerConfig::fromJson(const QJsonObject &json)
         }
     } else {
         transform = StickerTransform();
+    }
+
+    if (json["follow"].isObject()) {
+        follow.fromJson(json["follow"].toObject());
+    } else {
+        follow = StickerFollowConfig();
     }
 
     events.clear();

@@ -23,6 +23,7 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include "StickerData.h"
+#include "windowrecognitionservice.h"
 
 class MainWindow : public QMainWindow
 {
@@ -45,6 +46,7 @@ signals:
     void editSticker(const QString &stickerId);
     void editStickerWithConfig(const QString &stickerId, const StickerConfig &config); // 新增信号
     void deleteSticker(const QString &stickerId);
+    void lockFollowTarget(const QString &stickerId, qulonglong windowHandle);
     void exitRequested();
     void requestStickerConfigs();
 
@@ -69,6 +71,10 @@ private slots:
     void onLoadConfigClicked();
     void onSaveConfigClicked();
     void onExitClicked();
+    void onRefreshWindowsClicked();
+    void onLockWindowClicked();
+    void onFollowModeToggled(bool enabled);
+    void onFollowBatchModeToggled(bool enabled);
 
 private:
     void setupUI();
@@ -82,6 +88,8 @@ private:
     void beginEditSession();
     void applyPreviewIfEditing();
     void cancelPendingEdits();
+    void refreshWindowList();
+    void updateFollowModeUi();
 
     void updateStickerEditor(const StickerConfig &config);
     void clearStickerEditor();
@@ -124,6 +132,19 @@ private:
     QDoubleSpinBox *m_rotationSpinBox;
     QDoubleSpinBox *m_shearXSpinBox;
     QDoubleSpinBox *m_shearYSpinBox;
+    QCheckBox *m_followModeCheckBox;
+    QComboBox *m_followWindowComboBox;
+    QPushButton *m_refreshWindowsBtn;
+    QPushButton *m_lockWindowBtn;
+    QCheckBox *m_followBatchCheckBox;
+    QComboBox *m_followFilterTypeComboBox;
+    QLineEdit *m_followFilterValueEdit;
+    QComboBox *m_followAnchorComboBox;
+    QComboBox *m_followOffsetModeComboBox;
+    QDoubleSpinBox *m_followOffsetXSpinBox;
+    QDoubleSpinBox *m_followOffsetYSpinBox;
+    QSpinBox *m_followPollIntervalSpinBox;
+    QCheckBox *m_followHideMinimizedCheckBox;
 
     // 事件编辑标签页
     QWidget *m_eventsTab;
@@ -149,6 +170,7 @@ private:
     bool m_isEditing;
     bool m_updatingEditor;
     bool m_updatingList;
+    WindowRecognitionService m_windowService;
 };
 
 #endif // MAINWINDOW_H

@@ -23,6 +23,7 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     , m_menuController(this)
     , m_eventController(this)
     , m_initialized(false)
+    , m_runtimeHidden(false)
     , m_animationAngle(0)
 {
     // 基础设置
@@ -120,7 +121,7 @@ void StickerWidget::initializeWidget()
     applyMask();
 
     // 设置窗口模式
-    m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
+    m_editController.applyWindowFlags(m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
 
     // 设置点击穿透
     updateClickThrough();
@@ -471,8 +472,13 @@ void StickerWidget::onDeleteSticker()
 
 void StickerWidget::onToggleMode()
 {
+    if (m_config.follow.enabled) {
+        qDebug() << "贴纸" << m_config.id << "处于跟随模式，禁止切换桌面/置顶模式";
+        return;
+    }
+
     m_config.isDesktopMode = !m_config.isDesktopMode;
-    m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
+    m_editController.applyWindowFlags(m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
     updateContextMenuState();
     emit configChanged(m_config);
 
@@ -508,7 +514,7 @@ void StickerWidget::setEditMode(bool enabled)
     }
 
     m_interactionController.reset();
-    m_editController.setEditMode(enabled, m_config.isDesktopMode, m_initialized);
+    m_editController.setEditMode(enabled, m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
     updateContextMenuState();
     update();
 }
@@ -523,7 +529,9 @@ StickerConfig StickerWidget::getConfig() const
     StickerConfig config = m_config;
     config.position = pos();
     config.size = size();
-    config.visible = isVisible();
+    if (!m_runtimeHidden) {
+        config.visible = isVisible();
+    }
     return config;
 }
 
@@ -550,7 +558,7 @@ void StickerWidget::updateConfig(const StickerConfig &config)
     applyMask();
 
     // 重新应用窗口设置
-    m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
+    m_editController.applyWindowFlags(m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
     updateClickThrough();
     setOpacity(config.opacity);
     setVisible(config.visible);
@@ -571,7 +579,7 @@ void StickerWidget::setDesktopMode(bool isDesktop)
 {
     if (m_config.isDesktopMode != isDesktop) {
         m_config.isDesktopMode = isDesktop;
-        m_editController.applyWindowFlags(m_config.isDesktopMode, m_initialized);
+        m_editController.applyWindowFlags(m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
         updateContextMenuState();
         emit configChanged(m_config);
     }
@@ -599,6 +607,23 @@ void StickerWidget::setClickThrough(bool clickThrough)
 void StickerWidget::setVisible(bool visible)
 {
     m_config.visible = visible;
-    QWidget::setVisible(visible);
+    if (m_runtimeHidden) {
+        QWidget::setVisible(false);
+    } else {
+        QWidget::setVisible(visible);
+    }
     emit configChanged(m_config);
+}
+
+void StickerWidget::setRuntimeHidden(bool hidden)
+{
+    if (m_runtimeHidden == hidden) {
+        return;
+    }
+    m_runtimeHidden = hidden;
+    if (m_runtimeHidden) {
+        QWidget::setVisible(false);
+    } else {
+        QWidget::setVisible(m_config.visible);
+    }
 }

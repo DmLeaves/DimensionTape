@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QList>
 #include "StickerData.h"
+#include "stickerfollowcontroller.h"
 #include "stickerrepository.h"
 #include "stickerruntime.h"
 
@@ -39,10 +40,13 @@ public:
 
 public slots:
     void createSticker();
-    void onStickerConfigChanged(const StickerConfig &config);
-    void onStickerDeleteRequested(const QString &stickerId);
-    void onStickerEditRequested(const QString &stickerId);
+    void onInstanceConfigChanged(const QString &instanceId,
+                                 const StickerConfig &config,
+                                 bool syncToTemplate);
+    void onInstanceDeleteRequested(const QString &instanceId, const QString &templateId);
+    void onInstanceEditRequested(const QString &instanceId, const QString &templateId);
     void onConfigsRequested();
+    void lockStickerToWindow(const QString &stickerId, qulonglong windowHandle);
 
 signals:
     void stickerCreated(const StickerConfig &config);
@@ -62,11 +66,12 @@ private:
     bool saveConfigInternal();
     void destroyStickerInternal();
     void createDefaultSticker();
-    void connectWidgetSignals(StickerWidget *widget);
+    void connectRuntimeSignals();
     int findConfigIndex(const QString &stickerId) const;
 
     StickerRepository m_repository;
     StickerRuntime m_runtime;
+    StickerFollowController m_followController;
     QList<StickerConfig> m_configs;
     mutable QMutex m_mutex;
 

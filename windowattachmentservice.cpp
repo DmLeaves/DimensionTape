@@ -59,23 +59,13 @@ void WindowAttachmentService::ensureZOrder(QWidget *widget, WindowHandle target)
         return;
     }
 
-    if (isTargetForeground(hwndTarget)) {
-        SetWindowPos(self, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        return;
-    }
-
     bool targetTop = isTopMost(hwndTarget);
     SetWindowPos(self, targetTop ? HWND_TOPMOST : HWND_NOTOPMOST,
                  0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-
     HWND prev = reinterpret_cast<HWND>(previousInSameGroup(hwndTarget));
-    if (prev) {
+    if (prev && prev != self) {
         SetWindowPos(self, prev, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    } else {
-        SetWindowPos(self, targetTop ? HWND_TOPMOST : HWND_NOTOPMOST,
-                     0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
 #else
     Q_UNUSED(widget)

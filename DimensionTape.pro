@@ -5,11 +5,20 @@ CONFIG += c++11
 include($$PWD/../MessageSdk/MessageSdk.pri)
 SOURCES += \
     applicationmanager.cpp \
+    eventcombodelegate.cpp \
+    eventdetailpanel.cpp \
+    eventeditorpanel.cpp \
     eventhandler.cpp \
+    eventparametereditor.cpp \
     followlayouthelper.cpp \
+    eventlistmodel.cpp \
+    eventtyperegistry.cpp \
     main.cpp \
     mainwindow.cpp \
     messagefollowcontroller.cpp \
+    parametercodec.cpp \
+    parametertablemodel.cpp \
+    parametertypedelegate.cpp \
     stickerdata.cpp \
     stickercontextmenucontroller.cpp \
     stickereventcontroller.cpp \
@@ -29,10 +38,19 @@ SOURCES += \
 
 HEADERS += \
     applicationmanager.h \
+    eventcombodelegate.h \
+    eventdetailpanel.h \
+    eventeditorpanel.h \
     eventhandler.h \
+    eventparametereditor.h \
     followlayouthelper.h \
+    eventlistmodel.h \
+    eventtyperegistry.h \
     mainwindow.h \
     messagefollowcontroller.h \
+    parametercodec.h \
+    parametertablemodel.h \
+    parametertypedelegate.h \
     stickerdata.h \
     stickercontextmenucontroller.h \
     stickereventcontroller.h \

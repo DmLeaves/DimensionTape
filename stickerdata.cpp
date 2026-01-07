@@ -1,5 +1,7 @@
 #include "StickerData.h"
 #include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonValue>
 #include <QtMath>
 
 StickerTransform::StickerTransform()
@@ -9,6 +11,29 @@ StickerTransform::StickerTransform()
     , shearX(0.0)
     , shearY(0.0)
 {
+}
+
+QString StickerEvent::parametersText() const
+{
+    if (parameters.contains("text")) {
+        return parameters.value("text").toString();
+    }
+    if (parameters.size() == 1) {
+        return parameters.constBegin().value().toString();
+    }
+    if (!parameters.isEmpty()) {
+        QJsonDocument doc = QJsonDocument::fromVariant(parameters);
+        return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+    }
+    return QString();
+}
+
+void StickerEvent::setParametersText(const QString &text)
+{
+    parameters.clear();
+    if (!text.isEmpty()) {
+        parameters.insert("text", text);
+    }
 }
 
 QTransform StickerTransform::toTransform() const
@@ -73,7 +98,13 @@ QJsonObject StickerEvent::toJson() const
     obj["type"] = static_cast<int>(type);
     obj["trigger"] = static_cast<int>(trigger);
     obj["target"] = target;
-    obj["parameters"] = parameters;
+    if (parameters.isEmpty()) {
+        obj["parameters"] = QString();
+    } else if (parameters.size() == 1 && parameters.contains("text")) {
+        obj["parameters"] = parameters.value("text").toString();
+    } else {
+        obj["parameters"] = QJsonValue::fromVariant(parameters);
+    }
     obj["enabled"] = enabled;
     return obj;
 }
@@ -83,7 +114,15 @@ void StickerEvent::fromJson(const QJsonObject &json)
     type = static_cast<StickerEventType>(json["type"].toInt());
     trigger = static_cast<MouseTrigger>(json["trigger"].toInt());
     target = json["target"].toString();
-    parameters = json["parameters"].toString();
+    QJsonValue paramValue = json.value("parameters");
+    if (paramValue.isObject()) {
+        parameters = paramValue.toObject().toVariantMap();
+    } else if (paramValue.isString()) {
+        parameters.clear();
+        setParametersText(paramValue.toString());
+    } else {
+        parameters.clear();
+    }
     enabled = json["enabled"].toBool(true);
 }
 

@@ -17,13 +17,13 @@
 #include <QGroupBox>
 #include <QSplitter>
 #include <QTabWidget>
-#include <QTableWidget>
-#include <QTableWidgetItem>
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QStandardPaths>
 #include "StickerData.h"
 #include "windowrecognitionservice.h"
+
+class EventEditorPanel;
 
 class MainWindow : public QMainWindow
 {
@@ -63,9 +63,6 @@ private slots:
     void onEditStickerClicked();
     void onStickerListSelectionChanged();
     void onBrowseImageClicked();
-    void onAddEventClicked();
-    void onRemoveEventClicked();
-    void onEventTableItemChanged(QTableWidgetItem *item); // 修复参数
     void onEditorValueChanged();
     void onApplyChangesClicked();
     void onCancelChangesClicked();
@@ -79,6 +76,8 @@ private slots:
     void onSuggestFollowFilterClicked();
     void onFollowModeToggled(bool enabled);
     void onFollowBatchModeToggled(bool enabled);
+    void onEventsChanged(const QList<StickerEvent> &events);
+    void onEventStatusMessage(const QString &message, int timeoutMs);
 
 private:
     void setupUI();
@@ -103,7 +102,6 @@ private:
     void updateStickerEditor(const StickerConfig &config);
     void clearStickerEditor();
     StickerConfig getStickerConfigFromEditor() const;
-    void updateEventTable();
     void updateStickerList();
     int findConfigIndex(const QString &stickerId) const;
 
@@ -161,13 +159,7 @@ private:
 
     // 事件编辑标签页
     QWidget *m_eventsTab;
-    QTableWidget *m_eventTable;
-    QPushButton *m_addEventBtn;
-    QPushButton *m_removeEventBtn;
-    QComboBox *m_triggerComboBox;
-    QComboBox *m_eventTypeComboBox;
-    QLineEdit *m_targetEdit;
-    QLineEdit *m_parametersEdit;
+    EventEditorPanel *m_eventEditor;
 
     // 控制按钮
     QPushButton *m_applyChangesBtn;

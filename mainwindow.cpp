@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "eventeditorpanel.h"
 #include <QApplication>
 #include <QMenuBar>
 #include <QStatusBar>
@@ -12,6 +13,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_centralWidget(nullptr)
+    , m_eventEditor(nullptr)
     , m_currentStickerId("")
     , m_isEditing(false)
     , m_updatingEditor(false)
@@ -32,9 +34,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_stickerList, &QListWidget::itemSelectionChanged, this, &MainWindow::onStickerListSelectionChanged);
 
     connect(m_browseImageBtn, &QPushButton::clicked, this, &MainWindow::onBrowseImageClicked);
-    connect(m_addEventBtn, &QPushButton::clicked, this, &MainWindow::onAddEventClicked);
-    connect(m_removeEventBtn, &QPushButton::clicked, this, &MainWindow::onRemoveEventClicked);
-    connect(m_eventTable, &QTableWidget::itemChanged, this, &MainWindow::onEventTableItemChanged);
 
     connect(m_applyChangesBtn, &QPushButton::clicked, this, &MainWindow::onApplyChangesClicked);
     connect(m_cancelChangesBtn, &QPushButton::clicked, this, &MainWindow::onCancelChangesClicked);
@@ -396,48 +395,13 @@ void MainWindow::setupEventEditor()
 {
     QVBoxLayout *layout = new QVBoxLayout(m_eventsTab);
 
-    // 事件表格
-    m_eventTable = new QTableWidget;
-    m_eventTable->setColumnCount(5);
-    QStringList headers = {"触发器", "事件类型", "目标", "参数", "启用"};
-    m_eventTable->setHorizontalHeaderLabels(headers);
-    m_eventTable->horizontalHeader()->setStretchLastSection(true);
-    layout->addWidget(m_eventTable);
+    m_eventEditor = new EventEditorPanel(m_eventsTab);
+    layout->addWidget(m_eventEditor);
 
-    // 添加事件控制
-    QGroupBox *addEventGroup = new QGroupBox("添加新事件");
-    QGridLayout *addLayout = new QGridLayout(addEventGroup);
-
-    addLayout->addWidget(new QLabel("触发器:"), 0, 0);
-    m_triggerComboBox = new QComboBox;
-    m_triggerComboBox->addItems({"左键单击", "右键单击", "双击", "滚轮向上", "滚轮向下", "鼠标进入", "鼠标离开"});
-    addLayout->addWidget(m_triggerComboBox, 0, 1);
-
-    addLayout->addWidget(new QLabel("事件类型:"), 0, 2);
-    m_eventTypeComboBox = new QComboBox;
-    m_eventTypeComboBox->addItems({"打开程序", "打开文件夹", "打开文件", "播放声音", "显示消息", "自定义脚本"});
-    addLayout->addWidget(m_eventTypeComboBox, 0, 3);
-
-    addLayout->addWidget(new QLabel("目标:"), 1, 0);
-    m_targetEdit = new QLineEdit;
-    addLayout->addWidget(m_targetEdit, 1, 1, 1, 2);
-
-    addLayout->addWidget(new QLabel("参数:"), 1, 3);
-    m_parametersEdit = new QLineEdit;
-    addLayout->addWidget(m_parametersEdit, 1, 4);
-
-    layout->addWidget(addEventGroup);
-
-    // 按钮
-    QHBoxLayout *buttonLayout = new QHBoxLayout;
-    m_addEventBtn = new QPushButton("添加事件");
-    m_removeEventBtn = new QPushButton("删除事件");
-
-    buttonLayout->addWidget(m_addEventBtn);
-    buttonLayout->addWidget(m_removeEventBtn);
-    buttonLayout->addStretch();
-
-    layout->addLayout(buttonLayout);
+    connect(m_eventEditor, &EventEditorPanel::eventsChanged,
+            this, &MainWindow::onEventsChanged);
+    connect(m_eventEditor, &EventEditorPanel::statusMessageRequested,
+            this, &MainWindow::onEventStatusMessage);
 }
 
 void MainWindow::setupMenuBar()
@@ -591,85 +555,18 @@ void MainWindow::onBrowseImageClicked()
     }
 }
 
-void MainWindow::onAddEventClicked()
+void MainWindow::onEventsChanged(const QList<StickerEvent> &events)
 {
     if (m_currentStickerId.isEmpty()) {
-        QMessageBox::warning(this, "警告", "请先选择一个贴纸");
         return;
     }
-
-    if (m_targetEdit->text().isEmpty()) {
-        QMessageBox::warning(this, "警告", "请输入事件目标");
-        return;
-    }
-
-    StickerEvent event;
-    event.trigger = stringToMouseTrigger(m_triggerComboBox->currentText());
-    event.type = stringToEventType(m_eventTypeComboBox->currentText());
-    event.target = m_targetEdit->text();
-    event.parameters = m_parametersEdit->text();
-    event.enabled = true;
-
-    m_currentConfig.events.append(event);
-    updateEventTable();
+    m_currentConfig.events = events;
     applyPreviewIfEditing();
-
-    // 清空输入框
-    m_targetEdit->clear();
-    m_parametersEdit->clear();
-
-    statusBar()->showMessage("事件已添加", 2000);
 }
 
-void MainWindow::onRemoveEventClicked()
+void MainWindow::onEventStatusMessage(const QString &message, int timeoutMs)
 {
-    int currentRow = m_eventTable->currentRow();
-    if (currentRow >= 0 && !m_currentStickerId.isEmpty()) {
-        if (currentRow < m_currentConfig.events.size()) {
-            m_currentConfig.events.removeAt(currentRow);
-            updateEventTable();
-            statusBar()->showMessage("事件已删除", 2000);
-            applyPreviewIfEditing();
-        }
-    } else {
-        QMessageBox::warning(this, "警告", "请选择要删除的事件");
-    }
-}
-
-void MainWindow::onEventTableItemChanged(QTableWidgetItem *item)
-{
-    if (!item || m_currentStickerId.isEmpty()) {
-        return;
-    }
-
-    int row = item->row();
-    int column = item->column();
-
-    // 找到对应的配置
-    if (row < m_currentConfig.events.size()) {
-        StickerEvent &event = m_currentConfig.events[row];
-
-        switch (column) {
-        case 0:
-            event.trigger = stringToMouseTrigger(item->text());
-            break;
-        case 1:
-            event.type = stringToEventType(item->text());
-            break;
-        case 2:
-            event.target = item->text();
-            break;
-        case 3:
-            event.parameters = item->text();
-            break;
-        case 4:
-            event.enabled = (item->checkState() == Qt::Checked);
-            break;
-        }
-
-        statusBar()->showMessage("事件已更新", 2000);
-        applyPreviewIfEditing();
-    }
+    statusBar()->showMessage(message, timeoutMs);
 }
 
 void MainWindow::beginEditSession()
@@ -1024,7 +921,10 @@ void MainWindow::updateStickerEditor(const StickerConfig &config)
     m_followHideMinimizedCheckBox->setChecked(config.follow.hideWhenMinimized);
     updateFollowModeUi();
 
-    updateEventTable();
+    if (m_eventEditor) {
+        m_eventEditor->setEvents(config.events);
+        m_eventEditor->setEditingEnabled(true);
+    }
     m_updatingEditor = false;
 }
 
@@ -1059,7 +959,11 @@ void MainWindow::clearStickerEditor()
     m_followHideMinimizedCheckBox->setChecked(true);
     updateFollowModeUi();
 
-    m_eventTable->setRowCount(0);
+    if (m_eventEditor) {
+        m_eventEditor->setEvents(QList<StickerEvent>());
+        m_eventEditor->clearInputs();
+        m_eventEditor->setEditingEnabled(false);
+    }
     m_updatingEditor = false;
 }
 
@@ -1244,33 +1148,6 @@ bool MainWindow::applyFollowFilterSuggestion(qulonglong handle, bool force, bool
     }
     applyPreviewIfEditing();
     return true;
-}
-
-void MainWindow::updateEventTable()
-{
-    if (m_currentStickerId.isEmpty()) {
-        m_eventTable->setRowCount(0);
-        return;
-    }
-
-    if (findConfigIndex(m_currentStickerId) < 0 || m_currentConfig.id != m_currentStickerId) {
-        return;
-    }
-
-    m_eventTable->setRowCount(m_currentConfig.events.size());
-
-    for (int i = 0; i < m_currentConfig.events.size(); ++i) {
-        const auto &event = m_currentConfig.events[i];
-
-        m_eventTable->setItem(i, 0, new QTableWidgetItem(mouseTriggersToString(event.trigger)));
-        m_eventTable->setItem(i, 1, new QTableWidgetItem(eventTypeToString(event.type)));
-        m_eventTable->setItem(i, 2, new QTableWidgetItem(event.target));
-        m_eventTable->setItem(i, 3, new QTableWidgetItem(event.parameters));
-
-        QTableWidgetItem *enabledItem = new QTableWidgetItem();
-        enabledItem->setCheckState(event.enabled ? Qt::Checked : Qt::Unchecked);
-        m_eventTable->setItem(i, 4, enabledItem);
-    }
 }
 
 void MainWindow::updateStickerList()

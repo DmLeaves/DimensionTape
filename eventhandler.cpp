@@ -44,8 +44,14 @@ void EventHandler::executeEvent(const StickerEvent &event)
     try {
         switch (event.type) {
         case StickerEventType::OpenProgram:
-            openProgram(event.target, event.parameters);
+        {
+            QString args = event.parameters.value("args").toString();
+            if (args.isEmpty()) {
+                args = event.parametersText();
+            }
+            openProgram(event.target, args);
             break;
+        }
         case StickerEventType::OpenFolder:
             openFolder(event.target);
             break;
@@ -56,11 +62,23 @@ void EventHandler::executeEvent(const StickerEvent &event)
             playSound(event.target);
             break;
         case StickerEventType::ShowMessage:
-            showMessage(event.target, event.parameters);
+        {
+            QString extra = event.parameters.value("append").toString();
+            if (extra.isEmpty()) {
+                extra = event.parametersText();
+            }
+            showMessage(event.target, extra);
             break;
+        }
         case StickerEventType::CustomScript:
-            runCustomScript(event.target, event.parameters);
+        {
+            QString args = event.parameters.value("args").toString();
+            if (args.isEmpty()) {
+                args = event.parametersText();
+            }
+            runCustomScript(event.target, args);
             break;
+        }
         default:
             break;
         }
@@ -130,9 +148,13 @@ void EventHandler::playSound(const QString &soundPath)
 void EventHandler::showMessage(const QString &message, const QString &title)
 {
     QString text = message;
-    const QString trimmedTitle = title.trimmed();
-    if (!trimmedTitle.isEmpty()) {
-        text = QString("%1\n%2").arg(trimmedTitle, message);
+    const QString extra = title.trimmed();
+    if (!extra.isEmpty()) {
+        if (!text.isEmpty()) {
+            text = QString("%1\n%2").arg(message, extra);
+        } else {
+            text = extra;
+        }
     }
 
     MessageBubbleWidget *bubble = new MessageBubbleWidget();

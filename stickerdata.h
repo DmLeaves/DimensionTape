@@ -8,6 +8,7 @@
 #include <QList>
 #include <QTransform>
 #include <QPointF>
+#include <QVariantMap>
 
 // 前向声明
 struct StickerEvent;
@@ -40,7 +41,7 @@ struct StickerEvent {
     StickerEventType type;
     MouseTrigger trigger;
     QString target;      // 目标路径/命令
-    QString parameters;  // 参数
+    QVariantMap parameters;  // 参数（结构化）
     bool enabled;
 
     // 构造函数
@@ -50,6 +51,9 @@ struct StickerEvent {
         , enabled(true)
     {
     }
+
+    QString parametersText() const;
+    void setParametersText(const QString &text);
 
     QJsonObject toJson() const;
     void fromJson(const QJsonObject &json);

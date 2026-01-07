@@ -1,4 +1,5 @@
 #include "stickerfollowcontroller.h"
+#include "followlayouthelper.h"
 #include "stickerinstance.h"
 #include "stickerruntime.h"
 #include "stickerwidget.h"
@@ -299,48 +300,21 @@ QPoint StickerFollowController::computeAnchoredPosition(const QRectF &windowRect
                                                         const QSize &stickerSize,
                                                         const StickerFollowConfig &follow) const
 {
-    QPointF offset = computeOffset(windowRect, follow);
-    QPointF anchorPoint;
-
-    switch (follow.anchor) {
-    case FollowAnchor::LeftTop:
-        anchorPoint = windowRect.topLeft();
-        break;
-    case FollowAnchor::LeftBottom:
-        anchorPoint = windowRect.bottomLeft();
-        break;
-    case FollowAnchor::RightTop:
-        anchorPoint = windowRect.topRight();
-        break;
-    case FollowAnchor::RightBottom:
-        anchorPoint = windowRect.bottomRight();
-        break;
-    default:
-        anchorPoint = windowRect.topLeft();
-        break;
-    }
-
-    QPointF target = anchorPoint + offset;
-    QPointF topLeft = target;
-
-    if (follow.anchor == FollowAnchor::RightTop || follow.anchor == FollowAnchor::RightBottom) {
-        topLeft.setX(target.x() - stickerSize.width());
-    }
-    if (follow.anchor == FollowAnchor::LeftBottom || follow.anchor == FollowAnchor::RightBottom) {
-        topLeft.setY(target.y() - stickerSize.height());
-    }
-
-    return QPoint(qRound(topLeft.x()), qRound(topLeft.y()));
+    FollowLayoutSpec spec;
+    spec.anchor = follow.anchor;
+    spec.offsetMode = follow.offsetMode;
+    spec.offset = follow.offset;
+    return FollowLayoutHelper::computeAnchoredPosition(windowRect, stickerSize, spec);
 }
 
 QPointF StickerFollowController::computeOffset(const QRectF &windowRect,
                                                const StickerFollowConfig &follow) const
 {
-    if (follow.offsetMode == FollowOffsetMode::RelativeRatio) {
-        return QPointF(windowRect.width() * follow.offset.x(),
-                       windowRect.height() * follow.offset.y());
-    }
-    return follow.offset;
+    FollowLayoutSpec spec;
+    spec.anchor = follow.anchor;
+    spec.offsetMode = follow.offsetMode;
+    spec.offset = follow.offset;
+    return FollowLayoutHelper::computeOffset(windowRect, spec);
 }
 
 QPointF StickerFollowController::computeOffsetForPosition(const QRectF &windowRect,
@@ -348,41 +322,8 @@ QPointF StickerFollowController::computeOffsetForPosition(const QRectF &windowRe
                                                           const QPoint &stickerTopLeft,
                                                           const StickerFollowConfig &follow) const
 {
-    QPointF anchorPoint;
-    switch (follow.anchor) {
-    case FollowAnchor::LeftTop:
-        anchorPoint = windowRect.topLeft();
-        break;
-    case FollowAnchor::LeftBottom:
-        anchorPoint = windowRect.bottomLeft();
-        break;
-    case FollowAnchor::RightTop:
-        anchorPoint = windowRect.topRight();
-        break;
-    case FollowAnchor::RightBottom:
-        anchorPoint = windowRect.bottomRight();
-        break;
-    default:
-        anchorPoint = windowRect.topLeft();
-        break;
-    }
-
-    QPointF offsetPx = QPointF(stickerTopLeft) - anchorPoint;
-    if (follow.anchor == FollowAnchor::RightTop || follow.anchor == FollowAnchor::RightBottom) {
-        offsetPx.setX(offsetPx.x() + stickerSize.width());
-    }
-    if (follow.anchor == FollowAnchor::LeftBottom || follow.anchor == FollowAnchor::RightBottom) {
-        offsetPx.setY(offsetPx.y() + stickerSize.height());
-    }
-
-    if (follow.offsetMode == FollowOffsetMode::RelativeRatio) {
-        const double width = windowRect.width();
-        const double height = windowRect.height();
-        return QPointF(width > 0.0 ? offsetPx.x() / width : 0.0,
-                       height > 0.0 ? offsetPx.y() / height : 0.0);
-    }
-
-    return offsetPx;
+    return FollowLayoutHelper::computeOffsetForPosition(windowRect, stickerSize, stickerTopLeft,
+                                                        follow.anchor, follow.offsetMode);
 }
 
 QSize StickerFollowController::resolveStickerSize(const StickerConfig &config,

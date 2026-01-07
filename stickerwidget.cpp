@@ -481,6 +481,8 @@ void StickerWidget::contextMenuEvent(QContextMenuEvent *event)
 
 void StickerWidget::handleMouseTrigger(MouseTrigger trigger)
 {
+    int pollInterval = m_config.follow.enabled ? m_config.follow.pollIntervalMs : 33;
+    m_eventController.setAnchorContext(this, frameGeometry(), pollInterval);
     m_eventController.handleTrigger(trigger);
 }
 

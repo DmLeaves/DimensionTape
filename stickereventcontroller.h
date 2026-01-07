@@ -5,6 +5,8 @@
 #include "EventHandler.h"
 #include "StickerData.h"
 
+class QWidget;
+
 class StickerEventController : public QObject
 {
     Q_OBJECT
@@ -14,6 +16,7 @@ public:
 
     void setEvents(const QList<StickerEvent> *events);
     void handleTrigger(MouseTrigger trigger);
+    void setAnchorContext(QWidget *widget, const QRect &rect, int pollIntervalMs = 33);
 
 signals:
     void eventExecuted(const QString &message);

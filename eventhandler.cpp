@@ -1,13 +1,35 @@
 #include "EventHandler.h"
+#include "messagebubblewidget.h"
+#include "messagefollowcontroller.h"
 #include <QDesktopServices>
 #include <QUrl>
 #include <QFileInfo>
 #include <QDebug>
 #include <QMediaPlayer>  // 替换 QSound
+#include <QGuiApplication>
+#include <QScreen>
+#include <QtGlobal>
+#include <QVariantMap>
 
 EventHandler::EventHandler(QObject *parent)
     : QObject(parent)
 {
+}
+
+void EventHandler::setAnchorContext(QWidget *widget, const QRect &rect, int pollIntervalMs)
+{
+    m_anchorWidget = widget;
+    m_anchorRect = rect;
+    m_hasAnchorRect = rect.isValid();
+    m_pollIntervalMs = qMax(16, pollIntervalMs);
+}
+
+void EventHandler::clearAnchorContext()
+{
+    m_anchorWidget = nullptr;
+    m_anchorRect = QRect();
+    m_hasAnchorRect = false;
+    m_pollIntervalMs = 33;
 }
 
 void EventHandler::executeEvent(const StickerEvent &event)
@@ -107,7 +129,42 @@ void EventHandler::playSound(const QString &soundPath)
 
 void EventHandler::showMessage(const QString &message, const QString &title)
 {
-    QMessageBox::information(nullptr, title.isEmpty() ? "贴纸消息" : title, message);
+    QString text = message;
+    const QString trimmedTitle = title.trimmed();
+    if (!trimmedTitle.isEmpty()) {
+        text = QString("%1\n%2").arg(trimmedTitle, message);
+    }
+
+    MessageBubbleWidget *bubble = new MessageBubbleWidget();
+    bubble->setAttribute(Qt::WA_DeleteOnClose, true);
+
+    QVariantMap baseConfig;
+    baseConfig["autoPosition"] = false;
+
+    bubble->setKind(MessageKind::Toast);
+    bubble->setConfig(baseConfig);
+    bubble->setText(text);
+
+    QSize bubbleSize = bubble->size();
+    QPoint pos;
+    QRect anchorRect = m_anchorRect;
+    if (!anchorRect.isValid() && m_anchorWidget) {
+        anchorRect = m_anchorWidget->frameGeometry();
+    }
+    if (anchorRect.isValid()) {
+        pos = resolveMessagePosition(anchorRect, bubbleSize);
+    } else {
+        QScreen *screen = QGuiApplication::primaryScreen();
+        QRect geom = screen ? screen->availableGeometry() : QRect(0, 0, 800, 600);
+        const int margin = 12;
+        pos = QPoint(geom.right() - margin - bubbleSize.width(), geom.top() + margin);
+    }
+
+    QVariantMap finalConfig = baseConfig;
+    finalConfig.insert("x", pos.x());
+    finalConfig.insert("y", pos.y());
+    bubble->showMessage(MessageKind::Toast, text, finalConfig);
+    MessageFollowController::instance()->trackMessage(bubble, m_anchorWidget.data(), pos, m_pollIntervalMs);
 }
 
 void EventHandler::runCustomScript(const QString &script, const QString &parameters)
@@ -125,4 +182,48 @@ void EventHandler::runCustomScript(const QString &script, const QString &paramet
         // 直接执行
         process->startDetached(script, parameters.split(' ', QString::SkipEmptyParts));
     }
+}
+
+QPoint EventHandler::resolveMessagePosition(const QRect &targetRect, const QSize &bubbleSize) const
+{
+    if (!targetRect.isValid()) {
+        return QPoint();
+    }
+
+    const int gap = 12;
+    const int screenMargin = 12;
+
+    const QPoint center = targetRect.center();
+    QScreen *screen = QGuiApplication::screenAt(center);
+    if (!screen) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    const QRect screenRect = screen ? screen->availableGeometry() : QRect(0, 0, 800, 600);
+
+    const bool onLeft = center.x() < screenRect.center().x();
+    const bool onTop = center.y() < screenRect.center().y();
+
+    QPoint pos;
+    if (onLeft && onTop) {
+        pos = QPoint(targetRect.right() + gap, targetRect.bottom() + gap);
+    } else if (!onLeft && !onTop) {
+        pos = QPoint(targetRect.left() - gap - bubbleSize.width(),
+                     targetRect.top() - gap - bubbleSize.height());
+    } else if (onLeft && !onTop) {
+        pos = QPoint(targetRect.right() + gap,
+                     targetRect.top() - gap - bubbleSize.height());
+    } else {
+        pos = QPoint(targetRect.left() - gap - bubbleSize.width(),
+                     targetRect.bottom() + gap);
+    }
+
+    int minX = screenRect.left() + screenMargin;
+    int minY = screenRect.top() + screenMargin;
+    int maxX = screenRect.right() - screenMargin - bubbleSize.width() + 1;
+    int maxY = screenRect.bottom() - screenMargin - bubbleSize.height() + 1;
+    if (maxX < minX) maxX = minX;
+    if (maxY < minY) maxY = minY;
+    pos.setX(qBound(minX, pos.x(), maxX));
+    pos.setY(qBound(minY, pos.y(), maxY));
+    return pos;
 }

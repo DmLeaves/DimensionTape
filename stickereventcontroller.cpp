@@ -28,3 +28,8 @@ void StickerEventController::handleTrigger(MouseTrigger trigger)
         }
     }
 }
+
+void StickerEventController::setAnchorContext(QWidget *widget, const QRect &rect, int pollIntervalMs)
+{
+    m_handler.setAnchorContext(widget, rect, pollIntervalMs);
+}

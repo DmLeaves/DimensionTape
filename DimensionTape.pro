@@ -2,11 +2,14 @@ QT += core gui widgets multimedia
 
 CONFIG += c++11
 
+include($$PWD/../MessageSdk/MessageSdk.pri)
 SOURCES += \
     applicationmanager.cpp \
     eventhandler.cpp \
+    followlayouthelper.cpp \
     main.cpp \
     mainwindow.cpp \
+    messagefollowcontroller.cpp \
     stickerdata.cpp \
     stickercontextmenucontroller.cpp \
     stickereventcontroller.cpp \
@@ -27,7 +30,9 @@ SOURCES += \
 HEADERS += \
     applicationmanager.h \
     eventhandler.h \
+    followlayouthelper.h \
     mainwindow.h \
+    messagefollowcontroller.h \
     stickerdata.h \
     stickercontextmenucontroller.h \
     stickereventcontroller.h \

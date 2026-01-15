@@ -1,6 +1,9 @@
 QT += core gui widgets multimedia
 
 CONFIG += c++11
+QMAKE_CXXFLAGS += /utf-8
+QMAKE_CFLAGS += /utf-8
+win32: LIBS += user32.lib gdi32.lib shell32.lib ole32.lib
 
 include($$PWD/../MessageSdk/MessageSdk.pri)
 SOURCES += \

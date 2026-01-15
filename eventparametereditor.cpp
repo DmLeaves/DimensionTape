@@ -59,10 +59,8 @@ EventParameterEditor::EventParameterEditor(QWidget *parent)
     QHBoxLayout *kvButtons = new QHBoxLayout;
     m_addRowButton = new QPushButton("添加", m_kvGroup);
     m_removeRowButton = new QPushButton("删除", m_kvGroup);
-    m_applyKvButton = new QPushButton("同步到表单", m_kvGroup);
     kvButtons->addWidget(m_addRowButton);
     kvButtons->addWidget(m_removeRowButton);
-    kvButtons->addWidget(m_applyKvButton);
     kvButtons->addStretch();
     kvLayout->addLayout(kvButtons);
 
@@ -79,8 +77,6 @@ EventParameterEditor::EventParameterEditor(QWidget *parent)
     m_rawEdit = new QPlainTextEdit(m_rawGroup);
     m_rawEdit->setPlaceholderText("{\n  \"key\": \"value\"\n}");
     rawLayout->addWidget(m_rawEdit);
-    m_applyRawButton = new QPushButton("应用到表单", m_rawGroup);
-    rawLayout->addWidget(m_applyRawButton);
     m_rawErrorLabel = new QLabel(m_rawGroup);
     m_rawErrorLabel->setStyleSheet("color: #c0392b;");
     m_rawErrorLabel->setText(" ");
@@ -91,11 +87,9 @@ EventParameterEditor::EventParameterEditor(QWidget *parent)
 
     connect(m_addRowButton, &QPushButton::clicked, this, &EventParameterEditor::onAddKvRow);
     connect(m_removeRowButton, &QPushButton::clicked, this, &EventParameterEditor::onRemoveKvRow);
-    connect(m_applyKvButton, &QPushButton::clicked, this, &EventParameterEditor::onApplyKvToForm);
     connect(m_kvModel, &ParameterTableModel::rowsChanged, this, &EventParameterEditor::onKvRowsChanged);
     connect(m_rawEdit, &QPlainTextEdit::textChanged, this, &EventParameterEditor::onRawTextChanged);
     connect(m_rawGroup, &QGroupBox::toggled, this, &EventParameterEditor::onRawToggled);
-    connect(m_applyRawButton, &QPushButton::clicked, this, &EventParameterEditor::onApplyRawToForm);
 
     setSpec(EventTypeSpec());
     setValues(QString(), QVariantMap());
@@ -224,22 +218,6 @@ void EventParameterEditor::onRemoveKvRow()
     }
 }
 
-void EventParameterEditor::onApplyKvToForm()
-{
-    if (!m_kvModel) {
-        return;
-    }
-    m_updating = true;
-    QString error;
-    QVariantMap map = ParameterCodec::mapFromRows(m_kvModel->rows(), &error);
-    m_parameters = map;
-    updateFormFromValues();
-    updateRawFromValues();
-    setParseError(error);
-    m_updating = false;
-    emit valuesChanged(m_target, m_parameters);
-}
-
 void EventParameterEditor::onRawToggled(bool checked)
 {
     if (m_rawEdit) {
@@ -253,26 +231,6 @@ void EventParameterEditor::onRawToggled(bool checked)
         updateRawFromValues();
         m_updating = false;
     }
-}
-
-void EventParameterEditor::onApplyRawToForm()
-{
-    if (!m_rawEdit) {
-        return;
-    }
-    m_updating = true;
-    QString error;
-    QVariantMap map;
-    if (ParameterCodec::mapFromJson(m_rawEdit->toPlainText(), &map, &error)) {
-        m_parameters = map;
-        updateFormFromValues();
-        updateKvFromValues();
-        setParseError(QString());
-    } else {
-        setParseError(error);
-    }
-    m_updating = false;
-    emit valuesChanged(m_target, m_parameters);
 }
 
 void EventParameterEditor::rebuildForm()

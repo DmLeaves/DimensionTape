@@ -38,9 +38,7 @@ private slots:
     void onRawTextChanged();
     void onAddKvRow();
     void onRemoveKvRow();
-    void onApplyKvToForm();
     void onRawToggled(bool checked);
-    void onApplyRawToForm();
 
 private:
     struct FormField {
@@ -76,13 +74,11 @@ private:
     ParameterTypeDelegate *m_typeDelegate = nullptr;
     QPushButton *m_addRowButton = nullptr;
     QPushButton *m_removeRowButton = nullptr;
-    QPushButton *m_applyKvButton = nullptr;
     QLabel *m_kvErrorLabel = nullptr;
 
     QGroupBox *m_rawGroup = nullptr;
     QPlainTextEdit *m_rawEdit = nullptr;
     QLabel *m_rawErrorLabel = nullptr;
-    QPushButton *m_applyRawButton = nullptr;
 };
 
 #endif // EVENTPARAMETEREDITOR_H

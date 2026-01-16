@@ -62,7 +62,10 @@ private slots:
     void onDeleteStickerClicked();
     void onEditStickerClicked();
     void onStickerListSelectionChanged();
+    void onContentTypeChanged(int index);
     void onBrowseImageClicked();
+    void onBrowseLive2DModelClicked();
+    void onBrowseLive2DRuntimeClicked();
     void onEditorValueChanged();
     void onApplyChangesClicked();
     void onCancelChangesClicked();
@@ -93,6 +96,7 @@ private:
     void cancelPendingEdits();
     void refreshWindowList();
     void updateFollowModeUi();
+    void updateContentTypeUi(StickerContentType type);
     bool isSingleFollowLocked() const;
     bool isBatchFollowLocked() const;
     QString buildFollowFilterValue(const WindowInfo &info) const;
@@ -125,8 +129,15 @@ private:
     // 基本属性标签页
     QWidget *m_basicTab;
     QLineEdit *m_nameEdit;
+    QComboBox *m_contentTypeComboBox;
     QLineEdit *m_imagePathEdit;
     QPushButton *m_browseImageBtn;
+    QGroupBox *m_live2dGroup;
+    QLineEdit *m_live2dModelPathEdit;
+    QPushButton *m_browseLive2DModelBtn;
+    QLineEdit *m_live2dRuntimeRootEdit;
+    QPushButton *m_browseLive2DRuntimeBtn;
+    QLineEdit *m_live2dShaderProfileEdit;
     QSpinBox *m_xSpinBox;
     QSpinBox *m_ySpinBox;
     QSpinBox *m_widthSpinBox;

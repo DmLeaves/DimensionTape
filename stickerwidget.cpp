@@ -5,6 +5,7 @@
 #include <QContextMenuEvent>
 #include <QApplication>
 #include <QScreen>
+#include <QResizeEvent>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QPropertyAnimation>
@@ -12,6 +13,7 @@
 #include <QDebug>
 #include <QtMath>
 #include "stickertransformlayout.h"
+#include "live2dwidget.h"
 
 namespace {
 bool fuzzyEqual(double a, double b)
@@ -52,6 +54,14 @@ bool eventEqual(const StickerEvent &a, const StickerEvent &b)
         && a.enabled == b.enabled;
 }
 
+bool live2dEqual(const Live2DConfig &a, const Live2DConfig &b)
+{
+    return a.modelJsonPath == b.modelJsonPath
+        && a.runtimeRoot == b.runtimeRoot
+        && a.shaderProfile == b.shaderProfile
+        && a.baseSize == b.baseSize;
+}
+
 bool eventsEqual(const QList<StickerEvent> &a, const QList<StickerEvent> &b)
 {
     if (a.size() != b.size()) {
@@ -69,7 +79,9 @@ bool configEqual(const StickerConfig &a, const StickerConfig &b)
 {
     return a.id == b.id
         && a.name == b.name
+        && a.contentType == b.contentType
         && a.imagePath == b.imagePath
+        && live2dEqual(a.live2d, b.live2d)
         && a.position == b.position
         && a.size == b.size
         && a.isDesktopMode == b.isDesktopMode
@@ -92,6 +104,7 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     , m_editController(this, this)
     , m_menuController(this)
     , m_eventController(this)
+    , m_live2dWidget(nullptr)
     , m_initialized(false)
     , m_runtimeHidden(false)
     , m_animationAngle(0)
@@ -178,11 +191,26 @@ StickerWidget::~StickerWidget()
 
 void StickerWidget::initializeWidget()
 {
-    // 加载贴纸图像
-    if (!m_config.imagePath.isEmpty() && QFileInfo::exists(m_config.imagePath)) {
-        loadStickerImage(m_config.imagePath);
+    bool configAdjusted = false;
+    if (m_config.contentType == StickerContentType::Live2D) {
+        if (m_config.clickThrough) {
+            m_config.clickThrough = false;
+            configAdjusted = true;
+        }
+        if (m_config.live2d.baseSize.isEmpty()) {
+            m_config.live2d.baseSize = m_config.size.isEmpty() ? QSize(200, 200) : m_config.size;
+            configAdjusted = true;
+        }
+        ensureLive2DWidget();
+        applyLive2DConfig();
     } else {
-        createDefaultSticker();
+        releaseLive2DWidget();
+        // 加载贴纸图像
+        if (!m_config.imagePath.isEmpty() && QFileInfo::exists(m_config.imagePath)) {
+            loadStickerImage(m_config.imagePath);
+        } else {
+            createDefaultSticker();
+        }
     }
 
     updateTransformedWindowSize(ResizeAnchor::KeepTopLeft);
@@ -203,6 +231,10 @@ void StickerWidget::initializeWidget()
     setVisible(m_config.visible);
 
     m_initialized = true;
+
+    if (configAdjusted) {
+        emit configChanged(m_config);
+    }
 
     qDebug() << "贴纸初始化完成:" << m_config.id;
 }
@@ -233,18 +265,77 @@ void StickerWidget::createDefaultSticker()
     qDebug() << "默认贴纸创建完成";
 }
 
+void StickerWidget::ensureLive2DWidget()
+{
+    if (!m_live2dWidget) {
+        m_live2dWidget = new Live2DWidget(this);
+        m_live2dWidget->setAttribute(Qt::WA_TranslucentBackground);
+        m_live2dWidget->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        m_live2dWidget->setAutoFillBackground(false);
+        m_live2dWidget->setFocusPolicy(Qt::NoFocus);
+    }
+
+    m_live2dWidget->setGeometry(rect());
+    m_live2dWidget->show();
+    m_live2dWidget->raise();
+}
+
+void StickerWidget::releaseLive2DWidget()
+{
+    if (!m_live2dWidget) {
+        return;
+    }
+    m_live2dWidget->hide();
+    m_live2dWidget->deleteLater();
+    m_live2dWidget = nullptr;
+}
+
+void StickerWidget::applyLive2DConfig()
+{
+    if (!m_live2dWidget) {
+        return;
+    }
+    m_live2dWidget->applyConfig(m_config.live2d);
+}
+
 void StickerWidget::applyMask()
 {
+    if (m_config.contentType != StickerContentType::Image) {
+        clearMask();
+        return;
+    }
+
     QBitmap mask = m_renderer.buildMask(m_config, size());
     if (!mask.isNull()) {
         setMask(mask);
+    } else {
+        clearMask();
     }
 }
 
 void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
 {
     StickerTransformLayoutResult layout;
-    if (!m_renderer.calculateLayout(m_config, layout)) {
+    QSize baseSize;
+    QRect contentRect;
+    if (m_config.contentType == StickerContentType::Live2D) {
+        baseSize = m_config.live2d.baseSize;
+        if (baseSize.isEmpty()) {
+            baseSize = m_config.size.isEmpty() ? QSize(200, 200) : m_config.size;
+        }
+        contentRect = QRect(QPoint(0, 0), baseSize);
+        if (!StickerTransformLayout::calculate(m_config, baseSize, layout)) {
+            return;
+        }
+    } else {
+        baseSize = m_image.baseSize();
+        contentRect = m_image.contentRect();
+        if (!m_renderer.calculateLayout(m_config, layout)) {
+            return;
+        }
+    }
+
+    if (!layout.windowSize.isValid()) {
         return;
     }
 
@@ -254,8 +345,8 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
         QPointF windowCenter(layout.windowSize.width() / 2.0, layout.windowSize.height() / 2.0);
         QPointF centerOffset = mapped.center() - windowCenter;
         qDebug() << "变换调试"
-                 << "baseSize" << m_image.baseSize()
-                 << "contentRect" << m_image.contentRect()
+                 << "baseSize" << baseSize
+                 << "contentRect" << contentRect
                  << "windowSize" << layout.windowSize
                  << "bounds" << layout.bounds
                  << "baseRect" << layout.baseRect
@@ -280,6 +371,10 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
         move(newTopLeft);
     }
 
+    if (m_live2dWidget) {
+        m_live2dWidget->setGeometry(rect());
+    }
+
     bool configDirty = false;
     if (m_config.position != pos()) {
         m_config.position = pos();
@@ -296,7 +391,12 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
 
 void StickerWidget::updateClickThrough()
 {
-    if (m_config.clickThrough) {
+    bool allowClickThrough = m_config.clickThrough;
+    if (m_config.contentType == StickerContentType::Live2D) {
+        allowClickThrough = false;
+    }
+
+    if (allowClickThrough) {
         // 启用点击穿透
         setAttribute(Qt::WA_TransparentForMouseEvents, true);
         qDebug() << "贴纸" << m_config.id << "启用点击穿透";
@@ -309,20 +409,22 @@ void StickerWidget::updateClickThrough()
 
 void StickerWidget::paintEvent(QPaintEvent *)
 {
-    if (!m_initialized || m_image.isNull()) {
+    if (!m_initialized) {
         return;
     }
 
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
-    // 绘制贴纸图片（支持矩阵变换）
-    m_renderer.paint(painter, m_config, size());
+    if (m_config.contentType == StickerContentType::Image && !m_image.isNull()) {
+        // 绘制贴纸图片（支持矩阵变换）
+        m_renderer.paint(painter, m_config, size());
 
-    // 默认贴纸的动画效果
-    if (m_config.imagePath.isEmpty()) {
-        int alpha = int(20 + 15 * qSin(m_animationAngle));
-        painter.fillRect(rect(), QColor(150, 200, 255, alpha));
+        // 默认贴纸的动画效果
+        if (m_config.imagePath.isEmpty()) {
+            int alpha = int(20 + 15 * qSin(m_animationAngle));
+            painter.fillRect(rect(), QColor(150, 200, 255, alpha));
+        }
     }
 
     if (m_editController.isEditMode()) {
@@ -479,6 +581,14 @@ void StickerWidget::contextMenuEvent(QContextMenuEvent *event)
     m_menuController.exec(event->globalPos());
 }
 
+void StickerWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    if (m_live2dWidget) {
+        m_live2dWidget->setGeometry(rect());
+    }
+}
+
 void StickerWidget::handleMouseTrigger(MouseTrigger trigger)
 {
     int pollInterval = m_config.follow.enabled ? m_config.follow.pollIntervalMs : 33;
@@ -518,8 +628,8 @@ void StickerWidget::onAnimationTimer()
         m_animationAngle = 0;
     }
 
-    // 只有默认贴纸才有动画
-    if (m_config.imagePath.isEmpty()) {
+    // 只有默认图片贴纸才有动画
+    if (m_config.contentType == StickerContentType::Image && m_config.imagePath.isEmpty()) {
         update();
     }
 }
@@ -570,6 +680,10 @@ void StickerWidget::onToggleDrag()
 
 void StickerWidget::onToggleClickThrough()
 {
+    if (m_config.contentType == StickerContentType::Live2D) {
+        qDebug() << "Live2D贴纸不支持点击穿透";
+        return;
+    }
     m_config.clickThrough = !m_config.clickThrough;
     updateClickThrough();
     updateContextMenuState();
@@ -617,6 +731,23 @@ void StickerWidget::updateConfig(const StickerConfig &config)
     QSize oldBaseSize = m_config.size;
     m_config = config;
     m_eventController.setEvents(&m_config.events);
+    bool contentTypeChanged = (oldConfig.contentType != m_config.contentType);
+    bool live2dChanged = !live2dEqual(oldConfig.live2d, m_config.live2d);
+    bool configAdjusted = false;
+    if (m_config.contentType == StickerContentType::Live2D) {
+        if (m_config.clickThrough) {
+            m_config.clickThrough = false;
+            configAdjusted = true;
+        }
+        if (!fuzzyEqual(m_config.transform.scaleY, m_config.transform.scaleX)) {
+            m_config.transform.scaleY = m_config.transform.scaleX;
+            configAdjusted = true;
+        }
+        if (m_config.live2d.baseSize.isEmpty()) {
+            m_config.live2d.baseSize = m_config.size.isEmpty() ? QSize(200, 200) : m_config.size;
+            configAdjusted = true;
+        }
+    }
 
     // 更新位置和大小
     if (config.position != oldConfig.position) {
@@ -626,16 +757,26 @@ void StickerWidget::updateConfig(const StickerConfig &config)
         setFixedSize(m_config.size);
     }
 
-    // 更新图像
-    if (config.imagePath.isEmpty()) {
-        if (oldConfig.imagePath != config.imagePath || m_image.isNull()) {
-            createDefaultSticker();
+    if (m_config.contentType == StickerContentType::Live2D) {
+        ensureLive2DWidget();
+        if (contentTypeChanged || live2dChanged) {
+            applyLive2DConfig();
         }
-    } else if (oldConfig.imagePath != config.imagePath || m_image.isNull()) {
-        if (QFileInfo::exists(config.imagePath)) {
-            loadStickerImage(config.imagePath);
-        } else {
-            createDefaultSticker();
+    } else {
+        if (oldConfig.contentType == StickerContentType::Live2D) {
+            releaseLive2DWidget();
+        }
+        // 更新图像
+        if (config.imagePath.isEmpty()) {
+            if (oldConfig.imagePath != config.imagePath || m_image.isNull()) {
+                createDefaultSticker();
+            }
+        } else if (oldConfig.imagePath != config.imagePath || m_image.isNull()) {
+            if (QFileInfo::exists(config.imagePath)) {
+                loadStickerImage(config.imagePath);
+            } else {
+                createDefaultSticker();
+            }
         }
     }
 
@@ -644,7 +785,7 @@ void StickerWidget::updateConfig(const StickerConfig &config)
 
     // 重新应用窗口设置
     m_editController.applyWindowFlags(m_config.isDesktopMode, m_config.follow.enabled, m_initialized);
-    if (config.clickThrough != oldConfig.clickThrough) {
+    if (config.clickThrough != oldConfig.clickThrough || configAdjusted) {
         updateClickThrough();
     }
     if (!fuzzyEqual(config.opacity, oldConfig.opacity)) {
@@ -654,6 +795,10 @@ void StickerWidget::updateConfig(const StickerConfig &config)
 
     // 更新右键菜单状态
     updateContextMenuState();
+
+    if (configAdjusted && m_initialized) {
+        emit configChanged(m_config);
+    }
 
     qDebug() << "更新贴纸配置:" << config.id;
 }
@@ -685,6 +830,9 @@ void StickerWidget::setAllowDrag(bool allowDrag)
 
 void StickerWidget::setClickThrough(bool clickThrough)
 {
+    if (m_config.contentType == StickerContentType::Live2D) {
+        clickThrough = false;
+    }
     if (m_config.clickThrough != clickThrough) {
         m_config.clickThrough = clickThrough;
         updateClickThrough();

@@ -7,6 +7,7 @@
 #include <QList>
 #include "StickerData.h"
 #include "stickerfollowcontroller.h"
+#include "stickerassetstore.h"
 #include "stickerrepository.h"
 #include "stickerruntime.h"
 
@@ -65,12 +66,14 @@ private:
 
     bool loadConfigInternal();
     bool saveConfigInternal();
+    StickerConfig prepareConfigForStorage(const StickerConfig &config);
     void destroyStickerInternal();
     void createDefaultSticker();
     void connectRuntimeSignals();
     int findConfigIndex(const QString &stickerId) const;
 
     StickerRepository m_repository;
+    StickerAssetStore m_assetStore;
     StickerRuntime m_runtime;
     StickerFollowController m_followController;
     QList<StickerConfig> m_configs;

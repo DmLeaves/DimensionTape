@@ -29,6 +29,9 @@ EventEditorPanel::EventEditorPanel(QWidget *parent)
 void EventEditorPanel::setEvents(const QList<StickerEvent> &events)
 {
     if (m_eventModel) {
+        if (m_eventModel->events() == events) {
+            return;
+        }
         m_eventModel->setEvents(events);
         refreshTable();
         updateDetailForSelectedRow();
@@ -42,6 +45,9 @@ QList<StickerEvent> EventEditorPanel::events() const
 
 void EventEditorPanel::setEditingEnabled(bool enabled)
 {
+    if (m_editingEnabled == enabled) {
+        return;
+    }
     m_editingEnabled = enabled;
     if (m_eventTable) {
         m_eventTable->setEnabled(enabled);

@@ -9,6 +9,7 @@
 #include <QTransform>
 #include <QPointF>
 #include <QVariantMap>
+#include "live2dconfig.h"
 
 // 前向声明
 struct StickerEvent;
@@ -36,6 +37,12 @@ enum class MouseTrigger {
     MouseLeave       // 鼠标离开
 };
 
+// 贴纸内容类型
+enum class StickerContentType {
+    Image = 0,
+    Live2D
+};
+
 // 贴纸事件数据
 struct StickerEvent {
     StickerEventType type;
@@ -58,6 +65,20 @@ struct StickerEvent {
     QJsonObject toJson() const;
     void fromJson(const QJsonObject &json);
 };
+
+inline bool operator==(const StickerEvent &a, const StickerEvent &b)
+{
+    return a.type == b.type
+        && a.trigger == b.trigger
+        && a.target == b.target
+        && a.parameters == b.parameters
+        && a.enabled == b.enabled;
+}
+
+inline bool operator!=(const StickerEvent &a, const StickerEvent &b)
+{
+    return !(a == b);
+}
 
 // 贴纸变换参数
 struct StickerTransform {
@@ -116,7 +137,9 @@ struct StickerFollowConfig {
 struct StickerConfig {
     QString id;              // 唯一标识
     QString name;            // 贴纸名称
+    StickerContentType contentType; // 贴纸类型
     QString imagePath;       // 图片路径
+    Live2DConfig live2d;     // Live2D 配置
     QPoint position;         // 位置
     QSize size;              // 大小
     bool isDesktopMode;      // 是否为桌面模式
@@ -130,7 +153,8 @@ struct StickerConfig {
 
     // 构造函数
     StickerConfig()
-        : isDesktopMode(true)
+        : contentType(StickerContentType::Image)
+        , isDesktopMode(true)
         , visible(true)
         , opacity(1.0)
         , allowDrag(true)        // 默认允许拖动

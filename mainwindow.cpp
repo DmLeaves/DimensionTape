@@ -9,6 +9,7 @@
 #include <QDebug>
 #include <QSignalBlocker>
 #include <QRegularExpression>
+#include <QScrollArea>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -34,6 +35,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_stickerList, &QListWidget::itemSelectionChanged, this, &MainWindow::onStickerListSelectionChanged);
 
     connect(m_browseImageBtn, &QPushButton::clicked, this, &MainWindow::onBrowseImageClicked);
+    connect(m_browseLive2DModelBtn, &QPushButton::clicked, this, &MainWindow::onBrowseLive2DModelClicked);
+    connect(m_browseLive2DRuntimeBtn, &QPushButton::clicked, this, &MainWindow::onBrowseLive2DRuntimeClicked);
 
     connect(m_applyChangesBtn, &QPushButton::clicked, this, &MainWindow::onApplyChangesClicked);
     connect(m_cancelChangesBtn, &QPushButton::clicked, this, &MainWindow::onCancelChangesClicked);
@@ -149,7 +152,11 @@ void MainWindow::setupStickerEditor()
 
 void MainWindow::setupBasicTab()
 {
-    QVBoxLayout *layout = new QVBoxLayout(m_basicTab);
+    QVBoxLayout *rootLayout = new QVBoxLayout(m_basicTab);
+    QScrollArea *scrollArea = new QScrollArea(m_basicTab);
+    scrollArea->setWidgetResizable(true);
+    QWidget *content = new QWidget;
+    QVBoxLayout *layout = new QVBoxLayout(content);
 
     // 基本信息组
     QGroupBox *basicGroup = new QGroupBox("基本信息");
@@ -159,13 +166,42 @@ void MainWindow::setupBasicTab()
     m_nameEdit = new QLineEdit;
     basicLayout->addWidget(m_nameEdit, 0, 1, 1, 2);
 
-    basicLayout->addWidget(new QLabel("图片路径:"), 1, 0);
+    basicLayout->addWidget(new QLabel("类型:"), 1, 0);
+    m_contentTypeComboBox = new QComboBox;
+    m_contentTypeComboBox->addItems({"图片贴纸", "Live2D贴纸"});
+    basicLayout->addWidget(m_contentTypeComboBox, 1, 1, 1, 2);
+
+    basicLayout->addWidget(new QLabel("图片路径:"), 2, 0);
     m_imagePathEdit = new QLineEdit;
     m_browseImageBtn = new QPushButton("浏览...");
-    basicLayout->addWidget(m_imagePathEdit, 1, 1);
-    basicLayout->addWidget(m_browseImageBtn, 1, 2);
+    basicLayout->addWidget(m_imagePathEdit, 2, 1);
+    basicLayout->addWidget(m_browseImageBtn, 2, 2);
 
     layout->addWidget(basicGroup);
+
+    // Live2D 配置组
+    m_live2dGroup = new QGroupBox("Live2D设置");
+    QGridLayout *live2dLayout = new QGridLayout(m_live2dGroup);
+
+    live2dLayout->addWidget(new QLabel("模型JSON:"), 0, 0);
+    m_live2dModelPathEdit = new QLineEdit;
+    m_browseLive2DModelBtn = new QPushButton("浏览...");
+    live2dLayout->addWidget(m_live2dModelPathEdit, 0, 1);
+    live2dLayout->addWidget(m_browseLive2DModelBtn, 0, 2);
+
+    live2dLayout->addWidget(new QLabel("运行时目录:"), 1, 0);
+    m_live2dRuntimeRootEdit = new QLineEdit;
+    m_browseLive2DRuntimeBtn = new QPushButton("浏览...");
+    live2dLayout->addWidget(m_live2dRuntimeRootEdit, 1, 1);
+    live2dLayout->addWidget(m_browseLive2DRuntimeBtn, 1, 2);
+
+    live2dLayout->addWidget(new QLabel("Shader Profile:"), 2, 0);
+    m_live2dShaderProfileEdit = new QLineEdit;
+    m_live2dShaderProfileEdit->setPlaceholderText("Standard");
+    live2dLayout->addWidget(m_live2dShaderProfileEdit, 2, 1, 1, 2);
+
+    layout->addWidget(m_live2dGroup);
+    m_live2dGroup->setVisible(false);
 
     // 位置和大小组
     QGroupBox *positionGroup = new QGroupBox("位置和大小");
@@ -345,6 +381,8 @@ void MainWindow::setupBasicTab()
     layout->addWidget(followGroup);
 
     layout->addStretch();
+    scrollArea->setWidget(content);
+    rootLayout->addWidget(scrollArea);
 }
 
 void MainWindow::connectEditorSignals()
@@ -353,7 +391,12 @@ void MainWindow::connectEditorSignals()
     auto doubleChanged = QOverload<double>::of(&QDoubleSpinBox::valueChanged);
 
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
+    connect(m_contentTypeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onContentTypeChanged);
     connect(m_imagePathEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
+    connect(m_live2dModelPathEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
+    connect(m_live2dRuntimeRootEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
+    connect(m_live2dShaderProfileEdit, &QLineEdit::textEdited, this, &MainWindow::onEditorValueChanged);
     connect(m_xSpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
     connect(m_ySpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
     connect(m_widthSpinBox, intChanged, this, &MainWindow::onEditorValueChanged);
@@ -465,6 +508,7 @@ void MainWindow::onCreateStickerClicked()
     StickerConfig config;
     config.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     config.name = QString("贴纸 %1").arg(m_configs.size() + 1);
+    config.contentType = StickerContentType::Image;
     config.position = QPoint(100, 100);
     config.size = QSize(200, 200);
     config.isDesktopMode = true;
@@ -541,6 +585,16 @@ void MainWindow::onStickerListSelectionChanged()
     }
 }
 
+void MainWindow::onContentTypeChanged(int index)
+{
+    if (m_updatingEditor) {
+        return;
+    }
+    StickerContentType type = static_cast<StickerContentType>(index);
+    updateContentTypeUi(type);
+    onEditorValueChanged();
+}
+
 void MainWindow::onBrowseImageClicked()
 {
     QString fileName = QFileDialog::getOpenFileName(
@@ -552,6 +606,36 @@ void MainWindow::onBrowseImageClicked()
 
     if (!fileName.isEmpty()) {
         m_imagePathEdit->setText(fileName);
+        onEditorValueChanged();
+    }
+}
+
+void MainWindow::onBrowseLive2DModelClicked()
+{
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        "选择Live2D模型",
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation),
+        "Live2D模型 (*.model3.json)"
+    );
+
+    if (!fileName.isEmpty()) {
+        m_live2dModelPathEdit->setText(fileName);
+        onEditorValueChanged();
+    }
+}
+
+void MainWindow::onBrowseLive2DRuntimeClicked()
+{
+    QString dirName = QFileDialog::getExistingDirectory(
+        this,
+        "选择Live2D运行时目录",
+        QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+    );
+
+    if (!dirName.isEmpty()) {
+        m_live2dRuntimeRootEdit->setText(dirName);
+        onEditorValueChanged();
     }
 }
 
@@ -619,6 +703,14 @@ void MainWindow::onEditorValueChanged()
 {
     if (m_updatingEditor) {
         return;
+    }
+    if (m_contentTypeComboBox
+        && m_contentTypeComboBox->currentIndex() == static_cast<int>(StickerContentType::Live2D)) {
+        if (m_scaleYSpinBox && m_scaleXSpinBox
+            && !qFuzzyCompare(m_scaleYSpinBox->value(), m_scaleXSpinBox->value())) {
+            QSignalBlocker blocker(m_scaleYSpinBox);
+            m_scaleYSpinBox->setValue(m_scaleXSpinBox->value());
+        }
     }
     applyPreviewIfEditing();
 }
@@ -894,7 +986,12 @@ void MainWindow::updateStickerEditor(const StickerConfig &config)
 {
     m_updatingEditor = true;
     m_nameEdit->setText(config.name);
+    m_contentTypeComboBox->setCurrentIndex(static_cast<int>(config.contentType));
     m_imagePathEdit->setText(config.imagePath);
+    m_live2dModelPathEdit->setText(config.live2d.modelJsonPath);
+    m_live2dRuntimeRootEdit->setText(config.live2d.runtimeRoot);
+    m_live2dShaderProfileEdit->setText(
+        config.live2d.shaderProfile.isEmpty() ? "Standard" : config.live2d.shaderProfile);
     m_xSpinBox->setValue(config.position.x());
     m_ySpinBox->setValue(config.position.y());
     m_widthSpinBox->setValue(config.size.width());
@@ -920,6 +1017,7 @@ void MainWindow::updateStickerEditor(const StickerConfig &config)
     m_followPollIntervalSpinBox->setValue(config.follow.pollIntervalMs);
     m_followHideMinimizedCheckBox->setChecked(config.follow.hideWhenMinimized);
     updateFollowModeUi();
+    updateContentTypeUi(config.contentType);
 
     if (m_eventEditor) {
         m_eventEditor->setEvents(config.events);
@@ -932,7 +1030,11 @@ void MainWindow::clearStickerEditor()
 {
     m_updatingEditor = true;
     m_nameEdit->clear();
+    m_contentTypeComboBox->setCurrentIndex(static_cast<int>(StickerContentType::Image));
     m_imagePathEdit->clear();
+    m_live2dModelPathEdit->clear();
+    m_live2dRuntimeRootEdit->clear();
+    m_live2dShaderProfileEdit->setText("Standard");
     m_xSpinBox->setValue(0);
     m_ySpinBox->setValue(0);
     m_widthSpinBox->setValue(200);
@@ -958,6 +1060,7 @@ void MainWindow::clearStickerEditor()
     m_followPollIntervalSpinBox->setValue(16);
     m_followHideMinimizedCheckBox->setChecked(true);
     updateFollowModeUi();
+    updateContentTypeUi(StickerContentType::Image);
 
     if (m_eventEditor) {
         m_eventEditor->setEvents(QList<StickerEvent>());
@@ -975,7 +1078,14 @@ StickerConfig MainWindow::getStickerConfigFromEditor() const
 
     // 更新编辑器中的值
     config.name = m_nameEdit->text();
+    config.contentType = static_cast<StickerContentType>(m_contentTypeComboBox->currentIndex());
     config.imagePath = m_imagePathEdit->text();
+    config.live2d.modelJsonPath = m_live2dModelPathEdit->text().trimmed();
+    config.live2d.runtimeRoot = m_live2dRuntimeRootEdit->text().trimmed();
+    config.live2d.shaderProfile = m_live2dShaderProfileEdit->text().trimmed();
+    if (config.live2d.shaderProfile.isEmpty()) {
+        config.live2d.shaderProfile = "Standard";
+    }
     config.position = QPoint(m_xSpinBox->value(), m_ySpinBox->value());
     config.size = QSize(m_widthSpinBox->value(), m_heightSpinBox->value());
     config.transform.scaleX = m_scaleXSpinBox->value();
@@ -1003,6 +1113,16 @@ StickerConfig MainWindow::getStickerConfigFromEditor() const
 
     if (config.follow.enabled) {
         config.isDesktopMode = false;
+    }
+
+    if (config.contentType == StickerContentType::Live2D) {
+        config.clickThrough = false;
+        if (!qFuzzyCompare(config.transform.scaleY, config.transform.scaleX)) {
+            config.transform.scaleY = config.transform.scaleX;
+        }
+        if (config.live2d.baseSize.isEmpty()) {
+            config.live2d.baseSize = config.size;
+        }
     }
 
     return config;
@@ -1084,6 +1204,40 @@ void MainWindow::updateFollowModeUi()
     m_followOffsetYSpinBox->setEnabled(followEnabled);
     m_followPollIntervalSpinBox->setEnabled(followEnabled);
     m_followHideMinimizedCheckBox->setEnabled(followEnabled);
+}
+
+void MainWindow::updateContentTypeUi(StickerContentType type)
+{
+    bool isLive2D = (type == StickerContentType::Live2D);
+    if (m_imagePathEdit) {
+        m_imagePathEdit->setEnabled(!isLive2D);
+    }
+    if (m_browseImageBtn) {
+        m_browseImageBtn->setEnabled(!isLive2D);
+    }
+    if (m_live2dGroup) {
+        m_live2dGroup->setVisible(isLive2D);
+        m_live2dGroup->setEnabled(isLive2D);
+    }
+    if (isLive2D && m_live2dShaderProfileEdit
+        && m_live2dShaderProfileEdit->text().trimmed().isEmpty()) {
+        QSignalBlocker blocker(m_live2dShaderProfileEdit);
+        m_live2dShaderProfileEdit->setText("Standard");
+    }
+    if (m_clickThroughCheckBox) {
+        QSignalBlocker blocker(m_clickThroughCheckBox);
+        if (isLive2D) {
+            m_clickThroughCheckBox->setChecked(false);
+        }
+        m_clickThroughCheckBox->setEnabled(!isLive2D);
+    }
+    if (m_scaleYSpinBox) {
+        QSignalBlocker blocker(m_scaleYSpinBox);
+        m_scaleYSpinBox->setEnabled(!isLive2D);
+        if (isLive2D && m_scaleXSpinBox) {
+            m_scaleYSpinBox->setValue(m_scaleXSpinBox->value());
+        }
+    }
 }
 
 bool MainWindow::isSingleFollowLocked() const

@@ -78,6 +78,7 @@ void StickerManager::createSticker()
         nextIndex = m_configs.size() + 1;
     }
     config.name = QString("贴纸 %1").arg(nextIndex);
+    config.contentType = StickerContentType::Image;
     config.position = QPoint(100, 100);
     config.size = QSize(200, 200);
     config.isDesktopMode = true;
@@ -94,7 +95,7 @@ void StickerManager::createStickerInternal(const StickerConfig &config)
         return;
     }
 
-    StickerConfig createdConfig = config;
+    StickerConfig createdConfig = prepareConfigForStorage(config);
     if (createdConfig.id.isEmpty()) {
         createdConfig.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     }
@@ -167,7 +168,7 @@ void StickerManager::editSticker(const QString &stickerId, const StickerConfig &
         return;
     }
 
-    StickerConfig updatedConfig = config;
+    StickerConfig updatedConfig = prepareConfigForStorage(config);
     updatedConfig.id = stickerId;
 
     StickerInstance *instance = m_runtime.createOrUpdatePrimary(updatedConfig);
@@ -316,6 +317,28 @@ bool StickerManager::saveConfigInternal()
     emit configSaved();
     qDebug() << "配置保存完成";
     return true;
+}
+
+StickerConfig StickerManager::prepareConfigForStorage(const StickerConfig &config)
+{
+    StickerConfig updated = config;
+    QString error;
+    if (updated.contentType == StickerContentType::Image) {
+        QString imported = m_assetStore.importImage(updated.imagePath, &error);
+        if (!imported.isEmpty()) {
+            updated.imagePath = imported;
+        }
+    } else if (updated.contentType == StickerContentType::Live2D) {
+        QString imported = m_assetStore.importLive2DModel(updated.live2d.modelJsonPath, &error);
+        if (!imported.isEmpty()) {
+            updated.live2d.modelJsonPath = imported;
+        }
+    }
+
+    if (!error.isEmpty()) {
+        qDebug() << "资源导入失败:" << error;
+    }
+    return updated;
 }
 
 QList<StickerConfig> StickerManager::getAllConfigs() const
@@ -491,6 +514,7 @@ void StickerManager::createDefaultSticker()
     StickerConfig config;
     config.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     config.name = "默认贴纸";
+    config.contentType = StickerContentType::Image;
     config.imagePath = "";
     config.position = QPoint(200, 200);
     config.size = QSize(200, 200);

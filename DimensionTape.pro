@@ -1,4 +1,4 @@
-QT += core gui widgets multimedia
+QT += core gui widgets multimedia opengl
 
 CONFIG += c++11
 QMAKE_CXXFLAGS += /utf-8
@@ -6,8 +6,10 @@ QMAKE_CFLAGS += /utf-8
 win32: LIBS += user32.lib gdi32.lib shell32.lib ole32.lib
 
 include($$PWD/../MessageSdk/MessageSdk.pri)
+include($$PWD/../live2D/live2d_module.pri)
 SOURCES += \
     applicationmanager.cpp \
+    stickerassetstore.cpp \
     eventcombodelegate.cpp \
     eventdetailpanel.cpp \
     eventeditorpanel.cpp \
@@ -41,6 +43,7 @@ SOURCES += \
 
 HEADERS += \
     applicationmanager.h \
+    stickerassetstore.h \
     eventcombodelegate.h \
     eventdetailpanel.h \
     eventeditorpanel.h \

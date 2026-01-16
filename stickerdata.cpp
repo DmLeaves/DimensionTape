@@ -4,6 +4,33 @@
 #include <QJsonValue>
 #include <QtMath>
 
+namespace {
+QJsonObject live2dToJson(const Live2DConfig &config)
+{
+    QJsonObject obj;
+    obj["modelJsonPath"] = config.modelJsonPath;
+    obj["runtimeRoot"] = config.runtimeRoot;
+    obj["shaderProfile"] = config.shaderProfile;
+    if (!config.baseSize.isEmpty()) {
+        obj["baseSize"] = QJsonArray{config.baseSize.width(), config.baseSize.height()};
+    }
+    return obj;
+}
+
+void live2dFromJson(const QJsonObject &json, Live2DConfig &config)
+{
+    config.modelJsonPath = json["modelJsonPath"].toString();
+    config.runtimeRoot = json["runtimeRoot"].toString();
+    config.shaderProfile = json["shaderProfile"].toString("Standard");
+    QJsonArray sizeArray = json["baseSize"].toArray();
+    if (sizeArray.size() >= 2) {
+        config.baseSize = QSize(sizeArray[0].toInt(), sizeArray[1].toInt());
+    } else {
+        config.baseSize = QSize();
+    }
+}
+}
+
 StickerTransform::StickerTransform()
     : scaleX(1.0)
     , scaleY(1.0)
@@ -181,7 +208,9 @@ QJsonObject StickerConfig::toJson() const
     QJsonObject obj;
     obj["id"] = id;
     obj["name"] = name;
+    obj["contentType"] = static_cast<int>(contentType);
     obj["imagePath"] = imagePath;
+    obj["live2d"] = live2dToJson(live2d);
     obj["position"] = QJsonArray{position.x(), position.y()};
     obj["size"] = QJsonArray{size.width(), size.height()};
     obj["isDesktopMode"] = isDesktopMode;
@@ -205,7 +234,24 @@ void StickerConfig::fromJson(const QJsonObject &json)
 {
     id = json["id"].toString();
     name = json["name"].toString();
+    bool hasContentType = json.contains("contentType");
+    int typeValue = hasContentType
+        ? json["contentType"].toInt(static_cast<int>(StickerContentType::Image))
+        : static_cast<int>(StickerContentType::Image);
+    if (typeValue != static_cast<int>(StickerContentType::Image)
+        && typeValue != static_cast<int>(StickerContentType::Live2D)) {
+        typeValue = static_cast<int>(StickerContentType::Image);
+    }
+    contentType = static_cast<StickerContentType>(typeValue);
     imagePath = json["imagePath"].toString();
+    if (json["live2d"].isObject()) {
+        live2dFromJson(json["live2d"].toObject(), live2d);
+    } else {
+        live2d = Live2DConfig();
+    }
+    if (!hasContentType && !live2d.modelJsonPath.isEmpty()) {
+        contentType = StickerContentType::Live2D;
+    }
 
     QJsonArray posArray = json["position"].toArray();
     if (posArray.size() >= 2) {

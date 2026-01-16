@@ -13,6 +13,9 @@
 #include "stickerinteractioncontroller.h"
 #include "stickerrenderer.h"
 
+class Live2DWidget;
+class QResizeEvent;
+
 class StickerWidget : public QWidget
 {
     Q_OBJECT
@@ -45,6 +48,7 @@ protected:
     void enterEvent(QEvent *event) override;
     void leaveEvent(QEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 signals:
     void configChanged(const StickerConfig &config);
@@ -69,6 +73,9 @@ private:
     void initializeWidget();
     void loadStickerImage(const QString &imagePath);
     void createDefaultSticker();
+    void ensureLive2DWidget();
+    void releaseLive2DWidget();
+    void applyLive2DConfig();
     void applyMask();
     void updateTransformedWindowSize(ResizeAnchor anchor = ResizeAnchor::KeepCenter);
     void setupContextMenu();
@@ -84,6 +91,7 @@ private:
     StickerEditController m_editController;
     StickerContextMenuController m_menuController;
     StickerEventController m_eventController;
+    Live2DWidget *m_live2dWidget;
     bool m_initialized;
     bool m_runtimeHidden;
     double m_animationAngle;

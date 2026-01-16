@@ -64,12 +64,18 @@ void StickerFollowController::updateTemplate(const StickerConfig &config)
         return;
     }
 
-    TemplateState &state = m_templates[config.id];
-    state.config = config;
+    StickerConfig sanitized = config;
+    if (sanitized.contentType == StickerContentType::Live2D
+        && sanitized.follow.batchMode) {
+        sanitized.follow.batchMode = false;
+    }
 
-    updateTemplateVisibility(config);
+    TemplateState &state = m_templates[sanitized.id];
+    state.config = sanitized;
 
-    if (!config.follow.enabled) {
+    updateTemplateVisibility(sanitized);
+
+    if (!sanitized.follow.enabled) {
         removeAllInstances(state);
         state.primaryHandle = 0;
     }
@@ -412,6 +418,28 @@ void StickerFollowController::updateInstancesForTemplate(TemplateState &state,
         state.primaryHandle = target.handle;
         aliveHandles.insert(target.handle);
 
+        if (state.config.contentType == StickerContentType::Live2D) {
+            removeAllInstances(state);
+            state.instanceIds.clear();
+
+            StickerInstance *primary = m_runtime->instance(state.config.id);
+            QSize stickerSize = resolveStickerSize(state.config, primary);
+            StickerConfig instanceConfig = state.config;
+            if (!stickerSize.isEmpty()) {
+                instanceConfig.size = stickerSize;
+            }
+            instanceConfig.position = computeAnchoredPosition(target.rect, instanceConfig.size, follow);
+            instanceConfig.visible = state.config.visible
+                && (!target.minimized || !follow.hideWhenMinimized);
+
+            StickerInstance *updated = m_runtime->createOrUpdatePrimary(instanceConfig);
+            if (updated && updated->widget) {
+                m_attachmentService.detach(updated->widget);
+                m_attachmentService.ensureZOrder(updated->widget, target.handle);
+            }
+            return;
+        }
+
         QString instanceId = makeInstanceId(state.config.id, target.handle);
         StickerInstance *existing = m_runtime->instance(instanceId);
         QSize stickerSize = resolveStickerSize(state.config, existing);
@@ -426,7 +454,12 @@ void StickerFollowController::updateInstancesForTemplate(TemplateState &state,
         StickerInstance *instance = m_runtime->createOrUpdateInstance(instanceConfig, instanceId,
                                                                       state.config.id, false);
         if (instance && instance->widget) {
-            m_attachmentService.attach(instance->widget, target.handle);
+            if (instanceConfig.contentType == StickerContentType::Live2D) {
+                m_attachmentService.detach(instance->widget);
+                m_attachmentService.ensureZOrder(instance->widget, target.handle);
+            } else {
+                m_attachmentService.attach(instance->widget, target.handle);
+            }
         }
         state.instanceIds[target.handle] = instanceId;
         removeStaleInstances(state, aliveHandles);
@@ -449,7 +482,12 @@ void StickerFollowController::updateInstancesForTemplate(TemplateState &state,
         StickerInstance *instance = m_runtime->createOrUpdateInstance(instanceConfig, instanceId,
                                                                       state.config.id, false);
         if (instance && instance->widget) {
-            m_attachmentService.attach(instance->widget, info.handle);
+            if (instanceConfig.contentType == StickerContentType::Live2D) {
+                m_attachmentService.detach(instance->widget);
+                m_attachmentService.ensureZOrder(instance->widget, info.handle);
+            } else {
+                m_attachmentService.attach(instance->widget, info.handle);
+            }
         }
         state.instanceIds[info.handle] = instanceId;
     }
@@ -476,10 +514,15 @@ void StickerFollowController::updateTemplateVisibility(const StickerConfig &conf
 
     bool hideTemplate = false;
     if (config.follow.enabled) {
-        if (isBatchAnchored(config.follow, state ? state->primaryHandle : 0)) {
-            hideTemplate = true;
-        } else if (state && state->primaryHandle != 0) {
-            hideTemplate = true;
+        if (config.contentType == StickerContentType::Live2D
+            && !config.follow.batchMode) {
+            hideTemplate = false;
+        } else {
+            if (isBatchAnchored(config.follow, state ? state->primaryHandle : 0)) {
+                hideTemplate = true;
+            } else if (state && state->primaryHandle != 0) {
+                hideTemplate = true;
+            }
         }
     }
 

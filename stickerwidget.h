@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QPoint>
 #include <QPropertyAnimation>
+#include <QRectF>
 #include "StickerData.h"
 #include "stickereventcontroller.h"
 #include "stickercontextmenucontroller.h"
@@ -63,6 +64,7 @@ private slots:
     void onToggleDrag();        // 新增
     void onToggleClickThrough(); // 新增
     void onToggleEditMode();
+    void onLive2DBoundsChanged(const QRectF &bounds, bool valid);
 
 private:
     enum class ResizeAnchor {
@@ -75,7 +77,9 @@ private:
     void createDefaultSticker();
     void ensureLive2DWidget();
     void releaseLive2DWidget();
+    void rebuildLive2DWidget();
     void applyLive2DConfig();
+    void updateLive2DGeometry();
     void applyMask();
     void updateTransformedWindowSize(ResizeAnchor anchor = ResizeAnchor::KeepCenter);
     void setupContextMenu();
@@ -92,6 +96,12 @@ private:
     StickerContextMenuController m_menuController;
     StickerEventController m_eventController;
     Live2DWidget *m_live2dWidget;
+    QSize m_live2dRenderSize;
+    QSize m_live2dBoundsSourceSize;
+    QRectF m_live2dBoundsPx;
+    QPoint m_live2dBoundsOffset;
+    bool m_hasLive2dBounds;
+    bool m_autoFitLive2d;
     bool m_initialized;
     bool m_runtimeHidden;
     double m_animationAngle;

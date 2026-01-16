@@ -22,7 +22,7 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle("桌面贴纸管理器");
     setMinimumSize(800, 600);
-    resize(1200, 900);
+    resize(1300, 900);
 
     setupUI();
     setupMenuBar();
@@ -891,6 +891,15 @@ void MainWindow::onFollowBatchModeToggled(bool)
     if (m_updatingEditor) {
         return;
     }
+    bool isLive2D = m_contentTypeComboBox
+        && m_contentTypeComboBox->currentIndex() == static_cast<int>(StickerContentType::Live2D);
+    if (isLive2D) {
+        QSignalBlocker blocker(m_followBatchCheckBox);
+        m_followBatchCheckBox->setChecked(false);
+        updateFollowModeUi();
+        statusBar()->showMessage("Live2D不支持批量跟随", 2000);
+        return;
+    }
     bool enabled = m_followBatchCheckBox->isChecked();
     if (enabled) {
         QSignalBlocker blocker(m_followModeCheckBox);
@@ -1100,6 +1109,9 @@ StickerConfig MainWindow::getStickerConfigFromEditor() const
     config.clickThrough = m_clickThroughCheckBox->isChecked();  // 新增
     bool singleEnabled = m_followModeCheckBox->isChecked();
     bool batchEnabled = m_followBatchCheckBox->isChecked();
+    if (config.contentType == StickerContentType::Live2D && batchEnabled) {
+        batchEnabled = false;
+    }
     config.follow.enabled = singleEnabled || batchEnabled;
     config.follow.batchMode = batchEnabled;
     config.follow.filterType = static_cast<FollowFilterType>(m_followFilterTypeComboBox->currentIndex());
@@ -1171,6 +1183,13 @@ void MainWindow::updateFollowModeUi()
 {
     bool singleEnabled = m_followModeCheckBox->isChecked();
     bool batchEnabled = m_followBatchCheckBox->isChecked();
+    bool isLive2D = m_contentTypeComboBox
+        && m_contentTypeComboBox->currentIndex() == static_cast<int>(StickerContentType::Live2D);
+    if (isLive2D && batchEnabled) {
+        QSignalBlocker blocker(m_followBatchCheckBox);
+        m_followBatchCheckBox->setChecked(false);
+        batchEnabled = false;
+    }
     bool followEnabled = singleEnabled || batchEnabled;
     bool singleLocked = isSingleFollowLocked();
     bool batchLocked = isBatchFollowLocked();
@@ -1182,22 +1201,22 @@ void MainWindow::updateFollowModeUi()
 
     m_desktopModeCheckBox->setEnabled(!followEnabled);
     m_followModeCheckBox->setEnabled(!batchEnabled || singleEnabled);
-    m_followBatchCheckBox->setEnabled(!singleEnabled || batchEnabled);
+    m_followBatchCheckBox->setEnabled(!isLive2D && (!singleEnabled || batchEnabled));
     m_followWindowComboBox->setEnabled(singleEnabled);
     m_refreshWindowsBtn->setEnabled(singleEnabled);
     m_lockWindowBtn->setEnabled(singleEnabled);
     if (m_lockWindowBtn) {
         m_lockWindowBtn->setText(singleLocked ? "取消锚定" : "锚定窗口");
     }
-    m_batchWindowComboBox->setEnabled(batchEnabled);
-    m_batchRefreshWindowsBtn->setEnabled(batchEnabled);
-    m_batchLockWindowBtn->setEnabled(batchEnabled);
+    m_batchWindowComboBox->setEnabled(batchEnabled && !isLive2D);
+    m_batchRefreshWindowsBtn->setEnabled(batchEnabled && !isLive2D);
+    m_batchLockWindowBtn->setEnabled(batchEnabled && !isLive2D);
     if (m_batchLockWindowBtn) {
         m_batchLockWindowBtn->setText(batchLocked ? "取消锚定" : "锚定窗口");
     }
-    m_followFilterTypeComboBox->setEnabled(batchEnabled);
-    m_followFilterValueEdit->setEnabled(batchEnabled);
-    m_followFilterSuggestBtn->setEnabled(batchEnabled);
+    m_followFilterTypeComboBox->setEnabled(batchEnabled && !isLive2D);
+    m_followFilterValueEdit->setEnabled(batchEnabled && !isLive2D);
+    m_followFilterSuggestBtn->setEnabled(batchEnabled && !isLive2D);
     m_followAnchorComboBox->setEnabled(followEnabled);
     m_followOffsetModeComboBox->setEnabled(followEnabled);
     m_followOffsetXSpinBox->setEnabled(followEnabled);
@@ -1238,6 +1257,7 @@ void MainWindow::updateContentTypeUi(StickerContentType type)
             m_scaleYSpinBox->setValue(m_scaleXSpinBox->value());
         }
     }
+    updateFollowModeUi();
 }
 
 bool MainWindow::isSingleFollowLocked() const

@@ -105,6 +105,12 @@ StickerWidget::StickerWidget(const StickerConfig &config, QWidget *parent)
     , m_menuController(this)
     , m_eventController(this)
     , m_live2dWidget(nullptr)
+    , m_live2dRenderSize()
+    , m_live2dBoundsSourceSize()
+    , m_live2dBoundsPx()
+    , m_live2dBoundsOffset(0, 0)
+    , m_hasLive2dBounds(false)
+    , m_autoFitLive2d(true)
     , m_initialized(false)
     , m_runtimeHidden(false)
     , m_animationAngle(0)
@@ -273,9 +279,11 @@ void StickerWidget::ensureLive2DWidget()
         m_live2dWidget->setAttribute(Qt::WA_TransparentForMouseEvents, true);
         m_live2dWidget->setAutoFillBackground(false);
         m_live2dWidget->setFocusPolicy(Qt::NoFocus);
+        connect(m_live2dWidget, &Live2DWidget::visibleBoundsChanged,
+                this, &StickerWidget::onLive2DBoundsChanged, Qt::UniqueConnection);
     }
 
-    m_live2dWidget->setGeometry(rect());
+    updateLive2DGeometry();
     m_live2dWidget->show();
     m_live2dWidget->raise();
 }
@@ -286,8 +294,25 @@ void StickerWidget::releaseLive2DWidget()
         return;
     }
     m_live2dWidget->hide();
+    disconnect(m_live2dWidget, nullptr, this, nullptr);
     m_live2dWidget->deleteLater();
     m_live2dWidget = nullptr;
+    m_live2dRenderSize = QSize();
+    m_live2dBoundsSourceSize = QSize();
+    m_live2dBoundsPx = QRectF();
+    m_live2dBoundsOffset = QPoint(0, 0);
+    m_hasLive2dBounds = false;
+}
+
+void StickerWidget::rebuildLive2DWidget()
+{
+    if (m_config.contentType != StickerContentType::Live2D) {
+        return;
+    }
+    releaseLive2DWidget();
+    ensureLive2DWidget();
+    applyLive2DConfig();
+    updateTransformedWindowSize(ResizeAnchor::KeepTopLeft);
 }
 
 void StickerWidget::applyLive2DConfig()
@@ -296,6 +321,17 @@ void StickerWidget::applyLive2DConfig()
         return;
     }
     m_live2dWidget->applyConfig(m_config.live2d);
+}
+
+void StickerWidget::updateLive2DGeometry()
+{
+    if (!m_live2dWidget) {
+        return;
+    }
+    QSize renderSize = m_live2dRenderSize.isValid() ? m_live2dRenderSize : size();
+    QPoint offset = (m_autoFitLive2d && m_hasLive2dBounds) ? m_live2dBoundsOffset : QPoint(0, 0);
+    QRect rect(QPoint(-offset.x(), -offset.y()), renderSize);
+    m_live2dWidget->setGeometry(rect);
 }
 
 void StickerWidget::applyMask()
@@ -339,6 +375,52 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
         return;
     }
 
+    const double kLive2dBoundsMarginRatio = 0.02;
+    const double kLive2dBoundsStableRatio = 0.05;
+    QSize renderSize = layout.windowSize;
+    QSize targetSize = renderSize;
+    QPoint boundsOffset(0, 0);
+    QSize oldRenderSize = m_live2dRenderSize.isValid() ? m_live2dRenderSize : renderSize;
+    QPoint oldBoundsOffset = m_live2dBoundsOffset;
+    if (m_config.contentType == StickerContentType::Live2D) {
+        m_live2dRenderSize = renderSize;
+        if (m_autoFitLive2d && m_hasLive2dBounds && m_live2dBoundsSourceSize == renderSize) {
+            QRectF bounds = m_live2dBoundsPx;
+            if (bounds.isValid()) {
+                const double marginX = bounds.width() * kLive2dBoundsMarginRatio * 0.5;
+                const double marginY = bounds.height() * kLive2dBoundsMarginRatio * 0.5;
+                if (marginX > 0.0 || marginY > 0.0) {
+                    bounds.adjust(-marginX, -marginY, marginX, marginY);
+                }
+            }
+            QRectF limit(QPointF(0, 0), QSizeF(renderSize));
+            QRectF clipped = bounds.intersected(limit);
+            if (clipped.isValid() && clipped.width() >= 1.0 && clipped.height() >= 1.0) {
+                QSize candidateSize(qMax(1, int(qCeil(clipped.width()))),
+                                    qMax(1, int(qCeil(clipped.height()))));
+                QPoint candidateOffset = clipped.topLeft().toPoint();
+                bool applyCandidate = true;
+                if (renderSize == oldRenderSize && size().isValid()) {
+                    int stableDx = qMax(1, int(qRound(renderSize.width() * kLive2dBoundsStableRatio)));
+                    int stableDy = qMax(1, int(qRound(renderSize.height() * kLive2dBoundsStableRatio)));
+                    if (qAbs(candidateSize.width() - size().width()) < stableDx
+                        && qAbs(candidateSize.height() - size().height()) < stableDy
+                        && qAbs(candidateOffset.x() - m_live2dBoundsOffset.x()) < stableDx
+                        && qAbs(candidateOffset.y() - m_live2dBoundsOffset.y()) < stableDy) {
+                        applyCandidate = false;
+                    }
+                }
+                if (applyCandidate) {
+                    targetSize = candidateSize;
+                    boundsOffset = candidateOffset;
+                } else {
+                    targetSize = size();
+                    boundsOffset = m_live2dBoundsOffset;
+                }
+            }
+        }
+    }
+
     if (m_editController.isEditMode()) {
         QTransform renderTransform = StickerTransformLayout::buildRenderTransform(layout, layout.windowSize);
         QRectF mapped = renderTransform.mapRect(layout.baseRect);
@@ -359,20 +441,44 @@ void StickerWidget::updateTransformedWindowSize(ResizeAnchor anchor)
                  << "shear" << m_config.transform.shearX << m_config.transform.shearY;
     }
 
-    if (layout.windowSize != size()) {
-        QPoint oldTopLeft = pos();
-        QPoint oldCenter = geometry().center();
-        setFixedSize(layout.windowSize);
-        QPoint newTopLeft = oldTopLeft;
+    QPoint oldTopLeft = pos();
+    QPoint oldCenter = geometry().center();
+    QPoint newTopLeft = oldTopLeft;
+    if (m_config.contentType == StickerContentType::Live2D) {
+        QPoint oldRenderTopLeft = oldTopLeft - oldBoundsOffset;
         if (anchor == ResizeAnchor::KeepCenter) {
-            newTopLeft = oldCenter - QPoint(layout.windowSize.width() / 2,
-                                            layout.windowSize.height() / 2);
+            QPoint oldRenderCenter = oldRenderTopLeft
+                + QPoint(oldRenderSize.width() / 2, oldRenderSize.height() / 2);
+            newTopLeft = oldRenderCenter - QPoint(renderSize.width() / 2,
+                                                  renderSize.height() / 2)
+                + boundsOffset;
+        } else {
+            newTopLeft = oldRenderTopLeft + boundsOffset;
         }
+    } else {
+        if (anchor == ResizeAnchor::KeepCenter) {
+            newTopLeft = oldCenter - QPoint(renderSize.width() / 2,
+                                            renderSize.height() / 2);
+        }
+    }
+
+    if (m_config.contentType == StickerContentType::Live2D) {
+        m_live2dBoundsOffset = boundsOffset;
+    }
+
+    if (targetSize != size()) {
+        setFixedSize(targetSize);
+    }
+    if (pos() != newTopLeft) {
         move(newTopLeft);
     }
 
     if (m_live2dWidget) {
-        m_live2dWidget->setGeometry(rect());
+        if (m_config.contentType == StickerContentType::Live2D) {
+            updateLive2DGeometry();
+        } else {
+            m_live2dWidget->setGeometry(rect());
+        }
     }
 
     bool configDirty = false;
@@ -585,8 +691,23 @@ void StickerWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     if (m_live2dWidget) {
-        m_live2dWidget->setGeometry(rect());
+        if (m_config.contentType == StickerContentType::Live2D) {
+            updateLive2DGeometry();
+        } else {
+            m_live2dWidget->setGeometry(rect());
+        }
     }
+}
+
+void StickerWidget::onLive2DBoundsChanged(const QRectF &bounds, bool valid)
+{
+    if (m_config.contentType != StickerContentType::Live2D) {
+        return;
+    }
+    m_hasLive2dBounds = valid;
+    m_live2dBoundsPx = valid ? bounds : QRectF();
+    m_live2dBoundsSourceSize = m_live2dWidget ? m_live2dWidget->size() : QSize();
+    updateTransformedWindowSize(ResizeAnchor::KeepTopLeft);
 }
 
 void StickerWidget::handleMouseTrigger(MouseTrigger trigger)
